@@ -1,0 +1,11 @@
+-- 001_initial_schema.down.sql
+-- QueueLess Database Schema Rollback
+
+DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS queue_history CASCADE;
+DROP TABLE IF EXISTS appointments CASCADE;
+DROP TABLE IF EXISTS slots CASCADE;
+DROP TABLE IF EXISTS working_hours CASCADE;
+DROP TABLE IF EXISTS services CASCADE;
+DROP TABLE IF EXISTS businesses CASCADE;
+DROP TABLE IF EXISTS users CASCADE;

@@ -2,10 +2,12 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
 import { query } from './db';
 import redis from './config/redis';
+import authRoutes from './modules/auth/auth.routes';
 
 export const createApp = (): Express => {
   const app = express();
@@ -38,9 +40,10 @@ export const createApp = (): Express => {
   });
   app.use(limiter);
 
-  // Body parser
+  // Body and cookie parsers
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
 
   // Base Health Check
   app.get('/api/health', async (_req: Request, res: Response) => {
@@ -87,8 +90,8 @@ export const createApp = (): Express => {
     });
   });
 
-  // Modules routes will be mounted under /api in subsequent steps
-  // e.g., app.use('/api/auth', authRoutes);
+  // Mount Module Routes
+  app.use(`${config.API_PREFIX}/auth`, authRoutes);
 
   // 404 Handler
   app.use((_req: Request, res: Response) => {

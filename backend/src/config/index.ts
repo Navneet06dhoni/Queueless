@@ -24,11 +24,15 @@ const envSchema = z.object({
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().optional().default(''),
 
-  // JWT
-  JWT_ACCESS_SECRET: z.string().default('queueless_super_secret_access_token_key_change_in_production_123456'),
+  // JWT Secrets (Strictly validated)
+  JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 characters long'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_SECRET: z.string().default('queueless_super_secret_refresh_token_key_change_in_production_789012'),
+  JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters long'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+
+  // Initial Admin Credentials (for seeding)
+  ADMIN_EMAIL: z.string().email().default('admin@queueless.local'),
+  ADMIN_PASSWORD: z.string().min(8).default('Admin@QueueLess123'),
 
   // SMTP
   SMTP_HOST: z.string().optional(),

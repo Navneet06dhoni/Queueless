@@ -8,10 +8,10 @@ describe('Database Migration Schema Verification', () => {
   beforeEach(() => {
     db = newDb();
     db.registerExtension('pgcrypto', () => {});
-    let idCounter = 1;
     db.public.registerFunction({
       name: 'gen_random_uuid',
-      implementation: () => `00000000-0000-0000-0000-${String(idCounter++).padStart(12, '0')}`,
+      impure: true,
+      implementation: () => crypto.randomUUID(),
     });
   });
 
@@ -117,6 +117,20 @@ describe('Database Migration Schema Verification', () => {
         VALUES ('99999999-9999-9999-9999-999999999999', '55555555-5555-5555-5555-555555555555', 'confirmed');
       `);
     }).toThrow();
+  });
+
+  it('should successfully apply 002_refresh_tokens.sql and rollback', () => {
+    const up001 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
+    const up002 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/002_refresh_tokens.sql'), 'utf-8');
+    const down002 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/002_refresh_tokens.down.sql'), 'utf-8');
+
+    db.public.none(up001);
+    expect(() => db.public.none(up002)).not.toThrow();
+
+    const rows = db.public.many('SELECT * FROM refresh_tokens');
+    expect(rows).toEqual([]);
+
+    expect(() => db.public.none(down002)).not.toThrow();
   });
 
   it('should successfully rollback using 001_initial_schema.down.sql', () => {

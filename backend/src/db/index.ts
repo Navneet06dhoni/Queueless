@@ -1,7 +1,7 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { config } from '../config';
 
-export const pool = new Pool(
+export let pool = new Pool(
   config.DATABASE_URL
     ? { connectionString: config.DATABASE_URL }
     : {
@@ -15,6 +15,10 @@ export const pool = new Pool(
         connectionTimeoutMillis: 5000,
       }
 );
+
+export const setPool = (newPool: any): void => {
+  pool = newPool;
+};
 
 pool.on('error', (err) => {
   console.error('Unexpected error on idle PostgreSQL client:', err);

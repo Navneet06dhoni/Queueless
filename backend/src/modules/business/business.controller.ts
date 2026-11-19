@@ -171,7 +171,22 @@ export class BusinessController {
     try {
       const { id } = req.params;
       const { status } = req.body;
+      const adminId = req.user?.id;
       const business = await this.service.updateBusinessStatus(id, status);
+
+      if (adminId) {
+        try {
+          const { adminService } = await import('../admin/admin.service');
+          await adminService.logAudit(
+            adminId,
+            status === 'approved' ? 'business.approve' : 'business.reject',
+            'business',
+            id,
+            { status }
+          );
+        } catch {}
+      }
+
       res.status(200).json({ business });
     } catch (err) {
       next(err);

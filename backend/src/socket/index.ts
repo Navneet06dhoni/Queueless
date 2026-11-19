@@ -73,7 +73,17 @@ export const initSocketServer = (httpServer: http.Server): Server => {
     try {
       const payload = verifyAccessToken(token);
       socket.data.user = payload;
-      next();
+
+      // Check if user is blocked
+      import('../middleware/auth')
+        .then(({ isUserBlocked }) => isUserBlocked(payload.sub))
+        .then((blocked) => {
+          if (blocked) {
+            return next(new Error('Authentication error: Account suspended'));
+          }
+          next();
+        })
+        .catch(() => next());
     } catch {
       return next(new Error('Authentication error: Invalid or expired token'));
     }

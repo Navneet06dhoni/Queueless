@@ -208,3 +208,4 @@ export class QueueRedisClient {
 }
 
 export const queueRedisClient = new QueueRedisClient();
+export const queueRedis = queueRedisClient;

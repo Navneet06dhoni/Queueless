@@ -59,12 +59,19 @@ export const setupTestDb = async (): Promise<TestDbInstance> => {
   );
   memDb.public.none(mig006);
 
+  const mig007 = fs.readFileSync(
+    path.join(__dirname, '../src/db/migrations/007_analytics_and_admin.sql'),
+    'utf-8'
+  );
+  memDb.public.none(mig007);
+
   const adapter = memDb.adapters.createPg();
   const testPool = new adapter.Pool();
 
   setPool(testPool);
 
   const resetData = () => {
+    memDb.public.none('DELETE FROM admin_audit_log;');
     memDb.public.none('DELETE FROM refresh_tokens;');
     memDb.public.none('DELETE FROM notifications;');
     memDb.public.none('DELETE FROM queue_history;');

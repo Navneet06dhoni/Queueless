@@ -6,6 +6,9 @@ export interface IUser {
   email: string;
   password_hash: string;
   role: UserRole;
+  is_blocked?: boolean;
+  blocked_at?: Date | null;
+  blocked_reason?: string | null;
   created_at: Date;
 }
 
@@ -14,6 +17,9 @@ export interface IUserResponse {
   name: string;
   email: string;
   role: UserRole;
+  is_blocked?: boolean;
+  blocked_at?: Date | null;
+  blocked_reason?: string | null;
   created_at: Date;
 }
 

@@ -203,6 +203,8 @@ export class QueueService {
     const position = (await this.redisClient.getPosition(businessId, dbEntry.id)) || 1;
     const avgMinutes = await this.getAverageServiceMinutes(businessId);
     const estimatedWaitMinutes = this.calculateEstimatedWait(position, avgMinutes);
+    await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
+    await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
 
     // 4. Publish Event and Socket notifications
     events.publish('queue.joined', {
@@ -329,6 +331,7 @@ export class QueueService {
     const position = (await this.redisClient.getPosition(businessId, dbEntry.id)) || 1;
     const avgMinutes = await this.getAverageServiceMinutes(businessId);
     const estimatedWaitMinutes = this.calculateEstimatedWait(position, avgMinutes);
+    await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
 
     events.publish('queue.joined', {
       businessId,
@@ -644,6 +647,7 @@ export class QueueService {
     const position = (await this.redisClient.getPosition(businessId, dbEntry.id)) || 1;
     const avgMinutes = await this.getAverageServiceMinutes(businessId);
     const estimatedWaitMinutes = this.calculateEstimatedWait(position, avgMinutes);
+    await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
 
     await this.broadcastQueueState(businessId);
 

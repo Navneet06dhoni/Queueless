@@ -14,6 +14,7 @@ import appointmentRoutes from './modules/booking/booking.routes';
 import queueRoutes from './modules/queue/queue.routes';
 import { notificationRoutes, adminNotificationRoutes } from './modules/notification/notification.routes';
 import { initNotificationSubscriptions } from './modules/notification';
+import analyticsRoutes from './modules/analytics/analytics.routes';
 
 export const createApp = (): Express => {
   const app = express();
@@ -107,6 +108,7 @@ export const createApp = (): Express => {
   app.use(`${config.API_PREFIX}/appointments`, appointmentRoutes);
   app.use(`${config.API_PREFIX}/queue`, queueRoutes);
   app.use(`${config.API_PREFIX}/notifications`, notificationRoutes);
+  app.use(`${config.API_PREFIX}/analytics`, analyticsRoutes);
 
   // 404 Handler
   app.use((_req: Request, res: Response) => {

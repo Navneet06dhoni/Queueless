@@ -4,7 +4,7 @@ import { IUser, IRefreshToken } from './auth.types';
 export class AuthRepository {
   async findUserByEmail(email: string): Promise<IUser | null> {
     const res = await query<IUser>(
-      'SELECT id, name, email, password_hash, role, created_at FROM users WHERE email = $1',
+      'SELECT id, name, email, password_hash, role, is_blocked, blocked_at, blocked_reason, created_at FROM users WHERE email = $1',
       [email]
     );
     return res.rows[0] || null;
@@ -12,7 +12,7 @@ export class AuthRepository {
 
   async findUserById(id: string): Promise<IUser | null> {
     const res = await query<IUser>(
-      'SELECT id, name, email, password_hash, role, created_at FROM users WHERE id = $1',
+      'SELECT id, name, email, password_hash, role, is_blocked, blocked_at, blocked_reason, created_at FROM users WHERE id = $1',
       [id]
     );
     return res.rows[0] || null;
@@ -27,7 +27,7 @@ export class AuthRepository {
     const res = await query<IUser>(
       `INSERT INTO users (name, email, password_hash, role)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, name, email, password_hash, role, created_at`,
+       RETURNING id, name, email, password_hash, role, is_blocked, blocked_at, blocked_reason, created_at`,
       [data.name, data.email, data.password_hash, data.role]
     );
     return res.rows[0];

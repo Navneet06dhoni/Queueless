@@ -210,6 +210,26 @@ describe('Database Migration Schema Verification', () => {
     expect(() => db.public.none(down006)).not.toThrow();
   });
 
+  it('should successfully apply 007_analytics_and_admin.sql and rollback', () => {
+    const up001 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
+    const up007 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/007_analytics_and_admin.sql'), 'utf-8');
+    const down007 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/007_analytics_and_admin.down.sql'), 'utf-8');
+
+    db.public.none(up001);
+    expect(() => db.public.none(up007)).not.toThrow();
+
+    expect(() => db.public.many(`SELECT id, admin_id, action FROM admin_audit_log`)).not.toThrow();
+
+    const userBlockedCol = db.public.many(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' AND column_name = 'is_blocked'
+    `);
+    expect(userBlockedCol.length).toBe(1);
+
+    expect(() => db.public.none(down007)).not.toThrow();
+  });
+
   it('should successfully rollback using 001_initial_schema.down.sql', () => {
     const upSql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
     const downSql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.down.sql'), 'utf-8');

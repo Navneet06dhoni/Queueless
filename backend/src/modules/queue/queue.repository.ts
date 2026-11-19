@@ -59,13 +59,14 @@ export class QueueRepository {
     score: number;
     joinedAt: Date;
     status?: QueueEntryStatus;
+    estimatedWaitMinutes?: number | null;
   }): Promise<IQueueHistory> {
     const res = await this.query(
       `INSERT INTO queue_history (
          business_id, customer_id, walk_in_name, ticket_number,
-         source, appointment_id, score, joined_at, status
+         source, appointment_id, score, joined_at, status, estimated_wait_minutes
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         data.businessId,
@@ -77,9 +78,17 @@ export class QueueRepository {
         data.score,
         data.joinedAt,
         data.status || 'waiting',
+        data.estimatedWaitMinutes ?? null,
       ]
     );
     return res.rows[0];
+  }
+
+  async updateEstimatedWaitMinutes(entryId: string, estimatedWaitMinutes: number): Promise<void> {
+    await this.query(
+      `UPDATE queue_history SET estimated_wait_minutes = $2 WHERE id = $1`,
+      [entryId, estimatedWaitMinutes]
+    );
   }
 
   async markQueueEntryLeft(entryId: string, customerId: string): Promise<boolean> {

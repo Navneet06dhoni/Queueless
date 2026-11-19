@@ -4,6 +4,8 @@ import { ApiError } from '../utils/ApiError';
 import { verifyAccessToken } from '../modules/auth/auth.utils';
 import { UserRole } from '../modules/auth/auth.types';
 import { config } from '../config';
+import redis from '../config/redis';
+import { query } from '../db';
 
 // Augment Express Request interface with authenticated user
 declare global {
@@ -18,19 +20,68 @@ declare global {
 }
 
 /**
- * Validates JWT Access Token from Authorization Bearer header
+ * Checks if a user is blocked using Redis set 'blocked:users' first,
+ * falling back to database query if Redis is unavailable.
  */
-export const authenticate = (req: Request, _res: Response, next: NextFunction): void => {
+export const isUserBlocked = async (userId: string): Promise<boolean> => {
+  try {
+    if (redis.status === 'ready' || redis.status === 'connect') {
+      const isBlocked = await redis.sismember('blocked:users', userId);
+      return isBlocked === 1;
+    }
+  } catch {
+    // Fall back to database
+  }
+
+  try {
+    const res = await query('SELECT is_blocked FROM users WHERE id = $1', [userId]);
+    return res.rows[0]?.is_blocked === true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Updates Redis set 'blocked:users'
+ */
+export const setUserBlockedCache = async (userId: string, blocked: boolean): Promise<void> => {
+  try {
+    if (redis.status === 'ready' || redis.status === 'connect') {
+      if (blocked) {
+        await redis.sadd('blocked:users', userId);
+      } else {
+        await redis.srem('blocked:users', userId);
+      }
+    }
+  } catch (err: any) {
+    if (config.NODE_ENV !== 'test') {
+      console.warn(`[Redis] Failed to update blocked:users for ${userId}:`, err.message);
+    }
+  }
+};
+
+/**
+ * Validates JWT Access Token from Authorization Bearer header
+ * and rejects immediately if the user is blocked.
+ */
+export const authenticate = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw ApiError.unauthorized('Authentication token missing or invalid', 'UNAUTHORIZED');
+    return next(ApiError.unauthorized('Authentication token missing or invalid', 'UNAUTHORIZED'));
   }
 
   const token = authHeader.split(' ')[1];
 
   try {
     const decoded = verifyAccessToken(token);
+
+    // Immediate check if user is blocked
+    const blocked = await isUserBlocked(decoded.sub);
+    if (blocked) {
+      return next(ApiError.forbidden('Your account has been suspended', 'USER_BLOCKED'));
+    }
+
     req.user = {
       id: decoded.sub,
       role: decoded.role,
@@ -38,16 +89,19 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction): 
     next();
   } catch (err: any) {
     if (err.name === 'TokenExpiredError') {
-      throw ApiError.unauthorized('Access token has expired', 'TOKEN_EXPIRED');
+      return next(ApiError.unauthorized('Access token has expired', 'TOKEN_EXPIRED'));
     }
-    throw ApiError.unauthorized('Invalid authentication token', 'INVALID_TOKEN');
+    if (err instanceof ApiError) {
+      return next(err);
+    }
+    return next(ApiError.unauthorized('Invalid authentication token', 'INVALID_TOKEN'));
   }
 };
 
 /**
  * Validates JWT Access Token if present, otherwise continues without error
  */
-export const optionalAuthenticate = (req: Request, _res: Response, next: NextFunction): void => {
+export const optionalAuthenticate = async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -58,10 +112,13 @@ export const optionalAuthenticate = (req: Request, _res: Response, next: NextFun
 
   try {
     const decoded = verifyAccessToken(token);
-    req.user = {
-      id: decoded.sub,
-      role: decoded.role,
-    };
+    const blocked = await isUserBlocked(decoded.sub);
+    if (!blocked) {
+      req.user = {
+        id: decoded.sub,
+        role: decoded.role,
+      };
+    }
   } catch {
     // Ignore invalid token on optional auth
   }

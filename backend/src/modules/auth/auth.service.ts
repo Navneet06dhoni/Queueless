@@ -74,6 +74,15 @@ export class AuthService {
       throw ApiError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
+    if (user.is_blocked) {
+      throw ApiError.forbidden(
+        user.blocked_reason
+          ? `Your account has been suspended: ${user.blocked_reason}`
+          : 'Your account has been suspended',
+        'USER_BLOCKED'
+      );
+    }
+
     const accessToken = generateAccessToken(user);
     const rawRefreshToken = generateRefreshToken();
     const tokenHash = hashToken(rawRefreshToken);
@@ -130,6 +139,15 @@ export class AuthService {
     const user = await this.repo.findUserById(record.user_id);
     if (!user) {
       throw ApiError.unauthorized('User associated with token no longer exists', 'USER_NOT_FOUND');
+    }
+
+    if (user.is_blocked) {
+      throw ApiError.forbidden(
+        user.blocked_reason
+          ? `Your account has been suspended: ${user.blocked_reason}`
+          : 'Your account has been suspended',
+        'USER_BLOCKED'
+      );
     }
 
     // Issue rotated tokens in the SAME family

@@ -5,6 +5,7 @@ export const redis = new Redis({
   host: config.REDIS_HOST,
   port: config.REDIS_PORT,
   password: config.REDIS_PASSWORD || undefined,
+  db: config.NODE_ENV === 'test' ? config.REDIS_DB_TEST : 0,
   lazyConnect: true,
   maxRetriesPerRequest: 3,
   retryStrategy: (times) => {

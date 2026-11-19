@@ -133,28 +133,28 @@ export const seedDatabase = async (): Promise<void> => {
     let businessId: string;
     if (bRes.rows.length === 0) {
       const ins = await query<{ id: string }>(
-        `INSERT INTO businesses (owner_id, name, category, address, city, phone, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO businesses (owner_id, name, category, address, city, phone, status, queue_open)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id`,
-        [b.owner_id, b.name, b.category, b.address, b.city, b.phone, b.status]
+        [b.owner_id, b.name, b.category, b.address, b.city, b.phone, b.status, b.status === 'approved']
       );
       businessId = ins.rows[0].id;
     } else {
       businessId = bRes.rows[0].id;
       await query(
-        'UPDATE businesses SET status = $1, category = $2, address = $3, city = $4, phone = $5 WHERE id = $6',
-        [b.status, b.category, b.address, b.city, b.phone, businessId]
+        'UPDATE businesses SET status = $1, category = $2, address = $3, city = $4, phone = $5, queue_open = $6 WHERE id = $7',
+        [b.status, b.category, b.address, b.city, b.phone, b.status === 'approved', businessId]
       );
     }
-    console.log(`✅ Seeded Business: "${b.name}" (${b.status})`);
+    console.log(`✅ Seeded Business: "${b.name}" (${b.status}, queue_open: ${b.status === 'approved'})`);
 
-    // Working hours: Monday to Saturday 09:00 - 17:00 (days 1 to 6)
-    for (let day = 1; day <= 6; day++) {
+    // Working hours: Sunday to Saturday 08:00 - 22:00 (days 0 to 6)
+    for (let day = 0; day <= 6; day++) {
       await query(
         `INSERT INTO working_hours (business_id, day_of_week, open_time, close_time)
-         VALUES ($1, $2, '09:00', '17:00')
+         VALUES ($1, $2, '08:00', '22:00')
          ON CONFLICT (business_id, day_of_week)
-         DO UPDATE SET open_time = '09:00', close_time = '17:00'`,
+         DO UPDATE SET open_time = '08:00', close_time = '22:00'`,
         [businessId, day]
       );
     }

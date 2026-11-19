@@ -23,3 +23,9 @@ export const validateRequest = (schema: {
     }
   };
 };
+
+export const validate = (schema: ZodTypeAny) => {
+  return validateRequest({ body: schema });
+};
+
+export default validateRequest;

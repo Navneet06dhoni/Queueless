@@ -173,6 +173,25 @@ describe('Database Migration Schema Verification', () => {
     expect(() => db.public.none(down004)).not.toThrow();
   });
 
+  it('should successfully apply 005_queue_system.sql and rollback', () => {
+    const up001 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
+    const up005 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/005_queue_system.sql'), 'utf-8');
+    const down005 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/005_queue_system.down.sql'), 'utf-8');
+
+    db.public.none(up001);
+    expect(() => db.public.none(up005)).not.toThrow();
+
+    // Verify queue_open on businesses and new columns on queue_history
+    const bizColumns = db.public.many(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'businesses' AND column_name = 'queue_open'
+    `);
+    expect(bizColumns.length).toBe(1);
+
+    expect(() => db.public.none(down005)).not.toThrow();
+  });
+
   it('should successfully rollback using 001_initial_schema.down.sql', () => {
     const upSql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
     const downSql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.down.sql'), 'utf-8');

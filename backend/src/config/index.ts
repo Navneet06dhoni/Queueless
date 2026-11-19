@@ -27,6 +27,14 @@ const envSchema = z.object({
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().optional().default(''),
+  REDIS_DB_TEST: z.coerce.number().default(1),
+
+  // Live Queue & Hybrid System
+  QUEUE_NOTIFY_POSITION: z.coerce.number().default(3),
+  DEFAULT_SERVICE_MINUTES: z.coerce.number().default(10),
+  CHECKIN_EARLY_MINUTES: z.coerce.number().default(15),
+  CHECKIN_GRACE_MINUTES: z.coerce.number().default(15),
+  FRONTEND_ORIGIN: z.string().default('http://localhost:5173'),
 
   // JWT Secrets (Strictly validated)
   JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 characters long'),

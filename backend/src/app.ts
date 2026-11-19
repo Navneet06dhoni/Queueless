@@ -11,6 +11,7 @@ import authRoutes from './modules/auth/auth.routes';
 import businessRoutes from './modules/business/business.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import appointmentRoutes from './modules/booking/booking.routes';
+import queueRoutes from './modules/queue/queue.routes';
 
 export const createApp = (): Express => {
   const app = express();
@@ -98,6 +99,7 @@ export const createApp = (): Express => {
   app.use(`${config.API_PREFIX}/businesses`, businessRoutes);
   app.use(`${config.API_PREFIX}/admin`, adminRoutes);
   app.use(`${config.API_PREFIX}/appointments`, appointmentRoutes);
+  app.use(`${config.API_PREFIX}/queue`, queueRoutes);
 
   // 404 Handler
   app.use((_req: Request, res: Response) => {

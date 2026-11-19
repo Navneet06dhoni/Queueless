@@ -4,10 +4,15 @@ import { config } from './config';
 import { pool } from './db';
 import redis from './config/redis';
 import { runMigrationsUp } from './db/migrator';
+import { initSocketServer, closeSocketServer } from './socket';
+import { queueService } from './modules/queue/queue.service';
 
 const startServer = async () => {
   const app = createApp();
   const server = http.createServer(app);
+
+  // Initialize Socket.io server
+  initSocketServer(server);
 
   try {
     // Attempt database migration check on startup (if DB is reachable)
@@ -26,6 +31,13 @@ const startServer = async () => {
       console.warn('⚠️  Redis connection initial attempt:', redisErr.message);
     }
 
+    // Rebuild active virtual queues into Redis
+    try {
+      await queueService.rebuildQueues();
+    } catch (qErr: any) {
+      console.warn('⚠️  Could not rebuild queues on startup:', qErr.message);
+    }
+
     server.listen(config.PORT, () => {
       console.log(`🚀 QueueLess Backend running on port ${config.PORT}`);
       console.log(`🌐 Health check available at http://localhost:${config.PORT}/api/health`);
@@ -35,6 +47,7 @@ const startServer = async () => {
       console.log(`\n🛑 Received ${signal}. Gracefully shutting down...`);
       server.close(async () => {
         try {
+          await closeSocketServer();
           await pool.end();
           await redis.quit();
           console.log('✅ Clean shutdown completed');

@@ -207,3 +207,22 @@ export const emitOwnerQueueUpdated = (businessId: string, data: OwnerQueueDetail
     io.to(`owner:${businessId}`).emit('queue:owner-updated', data);
   }
 };
+
+export const emitNotificationNew = (
+  userId: string,
+  notification: { id: string; type: string; title: string | null; message: string; data: any; createdAt: string | Date }
+): void => {
+  if (io) {
+    io.to(`user:${userId}`).emit('notification:new', {
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      data: notification.data,
+      createdAt:
+        notification.createdAt instanceof Date
+          ? notification.createdAt.toISOString()
+          : notification.createdAt,
+    });
+  }
+};

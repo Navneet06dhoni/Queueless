@@ -12,6 +12,7 @@
     "seed": "tsx src/db/seed.ts",
     "demo:double-booking": "tsx scripts/double-booking-demo.ts",
     "demo:socket": "tsx scripts/socket-demo.ts",
+    "demo:notifications": "tsx scripts/notification-demo.ts",
     "test": "jest --runInBand --detectOpenHandles --forceExit"
   },
   "dependencies": {

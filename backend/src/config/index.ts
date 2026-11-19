@@ -49,12 +49,15 @@ const envSchema = z.object({
   // Business Timezone
   BUSINESS_TIMEZONE: z.string().default('Asia/Kolkata'),
 
-  // SMTP
+  // SMTP & Notifications
   SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().optional().default(587),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  EMAIL_FROM: z.string().default('"QueueLess Alerts" <no-reply@queueless.local>')
+  SMTP_PORT: z.coerce.number().optional().default(1025),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASS: z.string().optional().default(''),
+  EMAIL_FROM: z.string().default('"QueueLess Alerts" <no-reply@queueless.local>'),
+  NOTIFICATIONS_ENABLED: z.coerce.boolean().default(true),
+  REMINDER_MINUTES_BEFORE: z.coerce.number().default(60),
+  EMAIL_RETRY_DELAYS_MS: z.string().default('1000,4000,16000'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

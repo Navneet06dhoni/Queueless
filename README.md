@@ -62,21 +62,25 @@ A modular monolith platform designed for small clinics, salons, and local busine
 - Node.js (v18+ or v20+) & npm
 - PostgreSQL & Redis (locally installed or via Docker)
 
-### 2. Start PostgreSQL & Redis with Docker Compose
+### 2. Start PostgreSQL, Redis & MailHog with Docker Compose
 ```bash
 docker compose up -d
 ```
 This spins up:
-- PostgreSQL on `localhost:5432` (`queueless` / `postgres` / `postgrespassword`)
+- PostgreSQL on `localhost:5432` (`queueless` / `queueless` / `queueless_secret`)
 - Redis on `localhost:6379`
+- MailHog on `localhost:8025` (Web UI) and `localhost:1025` (SMTP)
 
-### 3. Run Database Migrations
+### 3. Run Database Migrations & Seeds
 ```bash
 # Run up migrations
 npm run migrate
 
 # Or rollback last migration
 npm run migrate:down
+
+# Seed initial test data (admin, owners, customers, approved businesses)
+npm --prefix backend run seed
 ```
 
 ### 4. Start Development Servers
@@ -90,15 +94,54 @@ npm run dev:frontend
 
 ---
 
+## 📬 Inspecting Emails in MailHog
+
+QueueLess includes a local MailHog SMTP server for testing all email notifications (booking confirmations, cancellations, reminders, and live queue status updates) without sending real external emails:
+
+1. Ensure the Docker container is running:
+   ```bash
+   docker compose up -d mailhog
+   ```
+2. Open the MailHog Web UI in your browser:
+   **[http://localhost:8025](http://localhost:8025)**
+3. Run the live notification demo to send test emails:
+   ```bash
+   npm --prefix backend run demo:notifications
+   ```
+4. View incoming emails in real-time in the web interface, inspect formatted HTML styling, plain text fallbacks, recipient addresses, and delivery headers.
+
+---
+
+## 🧪 Testing & Demos
+
+```bash
+# Run all backend unit & integration tests
+npm --prefix backend test
+
+# Run notification module test suite
+npm --prefix backend test -- tests/notification.test.ts
+
+# Run the live notification & MailHog demo
+npm --prefix backend run demo:notifications
+
+# Run the live virtual queue & Socket.io demo
+npm --prefix backend run demo:socket
+
+# Run the concurrency double-booking prevention demo
+npm --prefix backend run demo:double-booking
+```
+
+---
+
 ## 📦 Database Schema Summary
 
 1. `users`: UUID PK, name, email (unique), password_hash, role (`customer`, `owner`, `admin`), created_at
-2. `businesses`: UUID PK, owner_id FK, name, category, address, city, phone, status (`pending`, `approved`, `rejected`), created_at
+2. `businesses`: UUID PK, owner_id FK, name, category, address, city, phone, status (`pending`, `approved`, `rejected`), queue_open (boolean), created_at
 3. `services`: UUID PK, business_id FK, name, duration_minutes, price, created_at
 4. `working_hours`: UUID PK, business_id FK, day_of_week (0-6), open_time, close_time
 5. `slots`: UUID PK, service_id FK, start_time, end_time, status (`free`, `booked`), UNIQUE(`service_id`, `start_time`)
-6. `appointments`: UUID PK, slot_id FK (UNIQUE), customer_id FK, status (`confirmed`, `cancelled`, `completed`, `no_show`), created_at
-7. `queue_history`: UUID PK, business_id FK, customer_id FK, joined_at, called_at, completed_at, status (`waiting`, `called`, `completed`, `skipped`, `left`)
-8. `notifications`: UUID PK, user_id FK, type, message, status (`sent`, `unread`, `read`), created_at
+6. `appointments`: UUID PK, slot_id FK, customer_id FK, status (`confirmed`, `cancelled`, `completed`, `no_show`), reminder_sent_at, created_at, partial UNIQUE index on slot_id WHERE status <> 'cancelled'
+7. `queue_history`: UUID PK, business_id FK, customer_id FK (nullable), walk_in_name, ticket_number, source (`online`, `appointment`, `walk_in`), appointment_id FK, score, joined_at, called_at, completed_at, status (`waiting`, `called`, `completed`, `skipped`)
+8. `notifications`: UUID PK, user_id FK, type, title, message, data (JSONB), dedupe_key (UNIQUE), read_at, email_status (`not_required`, `pending`, `sent`, `failed`), email_attempts, last_error, status (`unread`, `read`), created_at
 
 Indexes are created on all foreign keys, search columns, and `slots(start_time)`.

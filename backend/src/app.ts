@@ -12,6 +12,8 @@ import businessRoutes from './modules/business/business.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import appointmentRoutes from './modules/booking/booking.routes';
 import queueRoutes from './modules/queue/queue.routes';
+import { notificationRoutes, adminNotificationRoutes } from './modules/notification/notification.routes';
+import { initNotificationSubscriptions } from './modules/notification';
 
 export const createApp = (): Express => {
   const app = express();
@@ -94,12 +96,17 @@ export const createApp = (): Express => {
     });
   });
 
+  // Initialize notification event subscriptions
+  initNotificationSubscriptions();
+
   // Mount Module Routes
   app.use(`${config.API_PREFIX}/auth`, authRoutes);
   app.use(`${config.API_PREFIX}/businesses`, businessRoutes);
+  app.use(`${config.API_PREFIX}/admin/notifications`, adminNotificationRoutes);
   app.use(`${config.API_PREFIX}/admin`, adminRoutes);
   app.use(`${config.API_PREFIX}/appointments`, appointmentRoutes);
   app.use(`${config.API_PREFIX}/queue`, queueRoutes);
+  app.use(`${config.API_PREFIX}/notifications`, notificationRoutes);
 
   // 404 Handler
   app.use((_req: Request, res: Response) => {

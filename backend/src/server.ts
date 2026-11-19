@@ -6,6 +6,7 @@ import redis from './config/redis';
 import { runMigrationsUp } from './db/migrator';
 import { initSocketServer, closeSocketServer } from './socket';
 import { queueService } from './modules/queue/queue.service';
+import { startReminderJob, stopReminderJob } from './modules/notification/jobs/reminderJob';
 
 const startServer = async () => {
   const app = createApp();
@@ -38,6 +39,9 @@ const startServer = async () => {
       console.warn('⚠️  Could not rebuild queues on startup:', qErr.message);
     }
 
+    // Start background appointment reminder job (runs every 60s)
+    startReminderJob();
+
     server.listen(config.PORT, () => {
       console.log(`🚀 QueueLess Backend running on port ${config.PORT}`);
       console.log(`🌐 Health check available at http://localhost:${config.PORT}/api/health`);
@@ -45,6 +49,7 @@ const startServer = async () => {
 
     const shutdown = async (signal: string) => {
       console.log(`\n🛑 Received ${signal}. Gracefully shutting down...`);
+      stopReminderJob();
       server.close(async () => {
         try {
           await closeSocketServer();

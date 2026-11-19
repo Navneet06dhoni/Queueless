@@ -192,6 +192,24 @@ describe('Database Migration Schema Verification', () => {
     expect(() => db.public.none(down005)).not.toThrow();
   });
 
+  it('should successfully apply 006_notifications_system.sql and rollback', () => {
+    const up001 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
+    const up006 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/006_notifications_system.sql'), 'utf-8');
+    const down006 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/006_notifications_system.down.sql'), 'utf-8');
+
+    db.public.none(up001);
+    expect(() => db.public.none(up006)).not.toThrow();
+
+    const notifColumns = db.public.many(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'notifications' AND column_name = 'dedupe_key'
+    `);
+    expect(notifColumns.length).toBe(1);
+
+    expect(() => db.public.none(down006)).not.toThrow();
+  });
+
   it('should successfully rollback using 001_initial_schema.down.sql', () => {
     const upSql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
     const downSql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.down.sql'), 'utf-8');

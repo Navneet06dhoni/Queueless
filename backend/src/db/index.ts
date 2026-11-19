@@ -10,7 +10,7 @@ export let pool = new Pool(
         user: config.DB_USER,
         password: config.DB_PASSWORD,
         database: config.DB_NAME,
-        max: 20,
+        max: config.DB_POOL_MAX,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 5000,
       }

@@ -41,6 +41,12 @@ export const setupTestDb = async (): Promise<TestDbInstance> => {
   );
   memDb.public.none(mig003);
 
+  const mig004 = fs.readFileSync(
+    path.join(__dirname, '../src/db/migrations/004_appointments_partial_unique_index.sql'),
+    'utf-8'
+  );
+  memDb.public.none(mig004);
+
   const adapter = memDb.adapters.createPg();
   const testPool = new adapter.Pool();
 

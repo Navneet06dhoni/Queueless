@@ -87,9 +87,11 @@ describe('Database Migration Schema Verification', () => {
     }).toThrow();
   });
 
-  it('should enforce unique constraint on appointments(slot_id)', () => {
-    const sql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
-    db.public.none(sql);
+  it('should enforce partial unique index on appointments(slot_id) allowing rebooking after cancellation', () => {
+    const up001 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
+    const up004 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/004_appointments_partial_unique_index.sql'), 'utf-8');
+    db.public.none(up001);
+    db.public.none(up004);
 
     db.public.none(`
       INSERT INTO users (id, name, email, password_hash, role)
@@ -106,17 +108,33 @@ describe('Database Migration Schema Verification', () => {
       INSERT INTO slots (id, service_id, start_time, end_time, status)
       VALUES ('99999999-9999-9999-9999-999999999999', '33333333-3333-3333-3333-333333333333', '2026-11-20 10:00:00+00', '2026-11-20 10:30:00+00', 'booked');
 
-      INSERT INTO appointments (slot_id, customer_id, status)
-      VALUES ('99999999-9999-9999-9999-999999999999', '44444444-4444-4444-4444-444444444444', 'confirmed');
+      -- First confirmed booking
+      INSERT INTO appointments (id, slot_id, customer_id, status)
+      VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '99999999-9999-9999-9999-999999999999', '44444444-4444-4444-4444-444444444444', 'confirmed');
     `);
 
-    // Duplicate appointment booking for same slot must throw
+    // Duplicate active booking for the same slot must throw
     expect(() => {
       db.public.none(`
-        INSERT INTO appointments (slot_id, customer_id, status)
-        VALUES ('99999999-9999-9999-9999-999999999999', '55555555-5555-5555-5555-555555555555', 'confirmed');
+        INSERT INTO appointments (id, slot_id, customer_id, status)
+        VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '99999999-9999-9999-9999-999999999999', '55555555-5555-5555-5555-555555555555', 'confirmed');
       `);
     }).toThrow();
+
+    // Cancel the first appointment
+    db.public.none(`
+      UPDATE appointments 
+      SET status = 'cancelled' 
+      WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    `);
+
+    // Now rebooking the same slot for customer 2 must succeed!
+    expect(() => {
+      db.public.none(`
+        INSERT INTO appointments (id, slot_id, customer_id, status)
+        VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '99999999-9999-9999-9999-999999999999', '55555555-5555-5555-5555-555555555555', 'confirmed');
+      `);
+    }).not.toThrow();
   });
 
   it('should successfully apply 002_refresh_tokens.sql and rollback', () => {
@@ -143,6 +161,16 @@ describe('Database Migration Schema Verification', () => {
     db.public.none(up002);
     expect(() => db.public.none(up003)).not.toThrow();
     expect(() => db.public.none(down003)).not.toThrow();
+  });
+
+  it('should successfully apply 004_appointments_partial_unique_index.sql and rollback', () => {
+    const up001 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
+    const up004 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/004_appointments_partial_unique_index.sql'), 'utf-8');
+    const down004 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/004_appointments_partial_unique_index.down.sql'), 'utf-8');
+
+    db.public.none(up001);
+    expect(() => db.public.none(up004)).not.toThrow();
+    expect(() => db.public.none(down004)).not.toThrow();
   });
 
   it('should successfully rollback using 001_initial_schema.down.sql', () => {

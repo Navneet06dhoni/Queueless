@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { businessController } from './business.controller';
+import { bookingController } from '../booking/booking.controller';
 import { authenticate, requireRole, optionalAuthenticate } from '../../middleware/auth';
 import { validateRequest } from '../../middleware/validate';
+import { businessAppointmentsQuerySchema } from '../booking/booking.validation';
 import {
   createBusinessSchema,
   updateBusinessSchema,
@@ -101,6 +103,15 @@ router.get(
   optionalAuthenticate,
   validateRequest({ query: slotsQuerySchema }),
   businessController.getSlots
+);
+
+// --- Business Appointments Route (Owner) ---
+router.get(
+  '/:id/appointments',
+  authenticate,
+  requireRole('owner'),
+  validateRequest({ query: businessAppointmentsQuerySchema }),
+  bookingController.getBusinessAppointments
 );
 
 export default router;

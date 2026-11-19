@@ -17,7 +17,11 @@ const envSchema = z.object({
   DB_USER: z.string().default('postgres'),
   DB_PASSWORD: z.string().default('postgrespassword'),
   DB_NAME: z.string().default('queueless'),
+  DB_POOL_MAX: z.coerce.number().default(20),
   DATABASE_URL: z.string().optional(),
+
+  // Booking & Appointments
+  CANCELLATION_CUTOFF_MINUTES: z.coerce.number().default(60),
 
   // Redis
   REDIS_HOST: z.string().default('localhost'),

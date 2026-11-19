@@ -133,6 +133,18 @@ describe('Database Migration Schema Verification', () => {
     expect(() => db.public.none(down002)).not.toThrow();
   });
 
+  it('should successfully apply 003_business_search_indexes.sql and rollback', () => {
+    const up001 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
+    const up002 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/002_refresh_tokens.sql'), 'utf-8');
+    const up003 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/003_business_search_indexes.sql'), 'utf-8');
+    const down003 = fs.readFileSync(path.join(__dirname, '../src/db/migrations/003_business_search_indexes.down.sql'), 'utf-8');
+
+    db.public.none(up001);
+    db.public.none(up002);
+    expect(() => db.public.none(up003)).not.toThrow();
+    expect(() => db.public.none(down003)).not.toThrow();
+  });
+
   it('should successfully rollback using 001_initial_schema.down.sql', () => {
     const upSql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'), 'utf-8');
     const downSql = fs.readFileSync(path.join(__dirname, '../src/db/migrations/001_initial_schema.down.sql'), 'utf-8');

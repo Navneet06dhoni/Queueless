@@ -45,6 +45,30 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction): 
 };
 
 /**
+ * Validates JWT Access Token if present, otherwise continues without error
+ */
+export const optionalAuthenticate = (req: Request, _res: Response, next: NextFunction): void => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return next();
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = verifyAccessToken(token);
+    req.user = {
+      id: decoded.sub,
+      role: decoded.role,
+    };
+  } catch {
+    // Ignore invalid token on optional auth
+  }
+  next();
+};
+
+/**
  * Restricts access to specified user roles
  */
 export const requireRole = (...allowedRoles: UserRole[]) => {

@@ -34,6 +34,9 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().default('admin@queueless.local'),
   ADMIN_PASSWORD: z.string().min(8).default('Admin@QueueLess123'),
 
+  // Business Timezone
+  BUSINESS_TIMEZONE: z.string().default('Asia/Kolkata'),
+
   // SMTP
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().optional().default(587),

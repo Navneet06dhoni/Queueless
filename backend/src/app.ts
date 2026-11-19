@@ -8,6 +8,8 @@ import { errorHandler } from './middleware/errorHandler';
 import { query } from './db';
 import redis from './config/redis';
 import authRoutes from './modules/auth/auth.routes';
+import businessRoutes from './modules/business/business.routes';
+import adminRoutes from './modules/admin/admin.routes';
 
 export const createApp = (): Express => {
   const app = express();
@@ -92,6 +94,8 @@ export const createApp = (): Express => {
 
   // Mount Module Routes
   app.use(`${config.API_PREFIX}/auth`, authRoutes);
+  app.use(`${config.API_PREFIX}/businesses`, businessRoutes);
+  app.use(`${config.API_PREFIX}/admin`, adminRoutes);
 
   // 404 Handler
   app.use((_req: Request, res: Response) => {

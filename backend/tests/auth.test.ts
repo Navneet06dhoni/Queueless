@@ -235,7 +235,7 @@ describe('Auth Module Integration Tests', () => {
       expect(refreshRes.status).toBe(200);
       expect(refreshRes.body.accessToken).toBeDefined();
       expect(refreshRes.body.refreshToken).toBeUndefined(); // only in cookie
-      
+
       const newCookie = refreshRes.headers['set-cookie'];
       expect(newCookie).toBeDefined();
       expect(newCookie[0]).not.toBe(initialCookie[0]);

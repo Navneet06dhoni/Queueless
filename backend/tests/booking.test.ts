@@ -459,6 +459,70 @@ describe('Booking & Concurrency-Safe Locking Module', () => {
       expect([200, 409]).toContain(swap1.status);
       expect([200, 409]).toContain(swap2.status);
     });
+
+    it('RACE: customer A cancels while customer B books the same slot at the same moment (20 times in a loop)', async () => {
+      for (let i = 0; i < 20; i++) {
+        const custA = await createCustomer(100 + i * 2);
+        const custB = await createCustomer(100 + i * 2 + 1);
+
+        const slot = await createFutureSlot(10 + (i % 10));
+
+        // Customer A books the slot first
+        const bookA = await request(app)
+          .post('/api/appointments')
+          .set('Authorization', `Bearer ${custA.token}`)
+          .send({ slot_id: slot.id });
+
+        expect(bookA.status).toBe(201);
+        const apptAId = bookA.body.appointment.id;
+
+        // Customer A cancels while Customer B attempts to book the same slot at the same moment
+        const [cancelRes, bookRes] = await Promise.all([
+          request(app)
+            .delete(`/api/appointments/${apptAId}`)
+            .set('Authorization', `Bearer ${custA.token}`),
+          request(app)
+            .post('/api/appointments')
+            .set('Authorization', `Bearer ${custB.token}`)
+            .send({ slot_id: slot.id }),
+        ]);
+
+        // Neither should fail with 500 or deadlock
+        expect(cancelRes.status).not.toBe(500);
+        expect(bookRes.status).not.toBe(500);
+
+        // Cancel must succeed (200)
+        expect(cancelRes.status).toBe(200);
+
+        // Booking must be either 201 (booked after cancel freed it) or 409 (conflict if cancel not committed yet)
+        expect([201, 409]).toContain(bookRes.status);
+
+        // Check database consistency:
+        // 1. Never two active appointments for the same slot
+        const apptsQuery = await query<{ count: string }>(
+          `SELECT count(*) as count FROM appointments WHERE slot_id = $1 AND status <> 'cancelled'`,
+          [slot.id]
+        );
+        const activeCount = parseInt(apptsQuery.rows[0].count, 10);
+        expect(activeCount).toBeLessThanOrEqual(1);
+
+        // 2. Slot status matches appointment status exactly
+        const slotQuery = await query<{ status: string }>(
+          `SELECT status FROM slots WHERE id = $1`,
+          [slot.id]
+        );
+        const slotStatus = slotQuery.rows[0].status;
+
+        if (activeCount === 1) {
+          expect(slotStatus).toBe('booked');
+          expect(bookRes.status).toBe(201);
+        } else {
+          expect(activeCount).toBe(0);
+          expect(slotStatus).toBe('free');
+          expect(bookRes.status).toBe(409);
+        }
+      }
+    }, 60000);
   });
 
   describe('Owner Appointment Management & Event Publishing', () => {

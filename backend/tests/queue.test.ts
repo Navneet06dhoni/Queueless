@@ -47,7 +47,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
     // Connect to Redis test database
     try {
       await redis.connect();
-    } catch {}
+    } catch { }
   }, 15000);
 
   afterAll(async () => {
@@ -57,7 +57,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
     try {
       await redis.flushdb();
       await redis.quit();
-    } catch {}
+    } catch { }
     await testDb.cleanup();
   });
 

@@ -24,7 +24,7 @@ export class BookingRepository {
        JOIN services srv ON s.service_id = srv.id
        JOIN businesses b ON srv.business_id = b.id
        WHERE s.id = $1
-       FOR UPDATE`,
+       FOR UPDATE OF s`,
       [slotId]
     );
 
@@ -53,7 +53,7 @@ export class BookingRepository {
        JOIN businesses b ON srv.business_id = b.id
        WHERE s.id IN ($1, $2)
        ORDER BY s.id ASC
-       FOR UPDATE`,
+       FOR UPDATE OF s`,
       [id1, id2]
     );
 
@@ -153,7 +153,7 @@ export class BookingRepository {
        JOIN services srv ON s.service_id = srv.id
        JOIN businesses b ON srv.business_id = b.id
        WHERE a.id = $1
-       FOR UPDATE`,
+       FOR UPDATE OF a`,
       [appointmentId]
     );
     return res.rows[0] || null;

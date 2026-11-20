@@ -32,7 +32,6 @@ export class AuthController {
       res.status(201).json({
         user: result.user,
         accessToken: result.tokens.accessToken,
-        refreshToken: result.tokens.refreshToken,
       });
     } catch (error) {
       next(error);
@@ -46,7 +45,6 @@ export class AuthController {
       res.status(200).json({
         user: result.user,
         accessToken: result.tokens.accessToken,
-        refreshToken: result.tokens.refreshToken,
       });
     } catch (error) {
       next(error);
@@ -55,7 +53,7 @@ export class AuthController {
 
   refresh = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const token = req.cookies?.refreshToken || req.body?.refreshToken;
+      const token = req.cookies?.refreshToken;
       if (!token) {
         throw ApiError.unauthorized('Refresh token is required', 'TOKEN_REQUIRED');
       }
@@ -65,7 +63,6 @@ export class AuthController {
       res.status(200).json({
         user: result.user,
         accessToken: result.tokens.accessToken,
-        refreshToken: result.tokens.refreshToken,
       });
     } catch (error) {
       next(error);
@@ -74,8 +71,10 @@ export class AuthController {
 
   logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const token = req.cookies?.refreshToken || req.body?.refreshToken;
-      await this.service.logout(token);
+      const token = req.cookies?.refreshToken;
+      if (token) {
+        await this.service.logout(token);
+      }
       clearRefreshTokenCookie(res);
       res.status(200).json({
         message: 'Successfully logged out',

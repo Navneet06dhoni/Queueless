@@ -27,7 +27,7 @@ describe('Booking & Concurrency-Safe Locking Module', () => {
   });
 
   beforeEach(async () => {
-    testDb.resetData();
+    await testDb.resetData();
     jest.restoreAllMocks();
 
     // 1. Create an owner

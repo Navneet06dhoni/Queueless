@@ -1,20 +1,27 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { config } from '../config';
 
-export let pool = new Pool(
-  config.DATABASE_URL
-    ? { connectionString: config.DATABASE_URL }
-    : {
-        host: config.DB_HOST,
-        port: config.DB_PORT,
-        user: config.DB_USER,
-        password: config.DB_PASSWORD,
-        database: config.DB_NAME,
-        max: config.DB_POOL_MAX,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
-      }
-);
+const getInitialPoolConfig = () => {
+  const isTest = process.env.NODE_ENV === 'test' || config.NODE_ENV === 'test';
+  if (isTest && config.TEST_DATABASE_URL) {
+    return { connectionString: config.TEST_DATABASE_URL };
+  }
+  if (config.DATABASE_URL) {
+    return { connectionString: config.DATABASE_URL };
+  }
+  return {
+    host: config.DB_HOST,
+    port: config.DB_PORT,
+    user: config.DB_USER,
+    password: config.DB_PASSWORD,
+    database: isTest ? 'queueless_test' : config.DB_NAME,
+    max: config.DB_POOL_MAX,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  };
+};
+
+export let pool = new Pool(getInitialPoolConfig());
 
 export const setPool = (newPool: any): void => {
   pool = newPool;

@@ -22,7 +22,6 @@ router.post(
 
 router.post(
   '/refresh',
-  validateRequest({ body: refreshSchema }),
   authController.refresh
 );
 

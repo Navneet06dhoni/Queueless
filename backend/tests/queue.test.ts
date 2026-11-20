@@ -63,7 +63,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
 
   beforeEach(async () => {
     clock.resetNow();
-    testDb.resetData();
+    await testDb.resetData();
     await redis.flushdb();
 
     // Set fixed working-hours time: 2026-11-20 11:00:00 (Friday)
@@ -87,7 +87,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
     customer3Id = '55555555-5555-5555-5555-555555555555';
     customer3Token = generateAccessToken({ id: customer3Id, role: 'customer' });
 
-    testDb.db.public.none(`
+    await testDb.db.public.none(`
       INSERT INTO users (id, name, email, password_hash, role) VALUES
       ('${ownerId}', 'Dr. Sharma', 'sharma@clinic.local', 'hash', 'owner'),
       ('${otherOwnerId}', 'Salon Owner', 'salon@test.local', 'hash', 'owner'),
@@ -100,7 +100,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
     businessId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
     business2Id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 
-    testDb.db.public.none(`
+    await testDb.db.public.none(`
       INSERT INTO businesses (id, owner_id, name, category, address, city, phone, status, queue_open) VALUES
       ('${businessId}', '${ownerId}', 'City Health Clinic', 'clinic', '100 MG Road', 'Bengaluru', '+919999999991', 'approved', true),
       ('${business2Id}', '${otherOwnerId}', 'Style Salon', 'salon', '50 Indiranagar', 'Bengaluru', '+919999999992', 'approved', true);
@@ -182,7 +182,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
       const tokens: string[] = [];
       for (let i = 1; i <= 30; i++) {
         const id = `66666666-0000-0000-0000-${i.toString().padStart(12, '0')}`;
-        testDb.db.public.none(`
+        await testDb.db.public.none(`
           INSERT INTO users (id, name, email, password_hash, role)
           VALUES ('${id}', 'Stress Customer ${i}', 'stress${i}@queueless.test', 'hash', 'customer');
         `);
@@ -236,7 +236,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
       expect(status409).toHaveLength(9);
 
       // Exactly 1 row in DB
-      const dbRows = testDb.db.public.many(`
+      const dbRows = await testDb.db.public.many(`
         SELECT * FROM queue_history WHERE customer_id = '${customer1Id}' AND status = 'waiting'
       `);
       expect(dbRows).toHaveLength(1);
@@ -268,7 +268,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
       expect(next1.body.current.ticketNumber).toBe(1);
 
       // Verify DB status of Customer 1 is 'called'
-      const checkC1 = testDb.db.public.one(`
+      const checkC1 = await testDb.db.public.one(`
         SELECT status FROM queue_history WHERE customer_id = '${customer1Id}'
       `);
       expect(checkC1.status).toBe('called');
@@ -284,7 +284,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
       expect(next2.body.current.ticketNumber).toBe(2);
 
       // Verify Customer 1 is completed
-      const checkC1Completed = testDb.db.public.one(`
+      const checkC1Completed = await testDb.db.public.one(`
         SELECT status, completed_at FROM queue_history WHERE customer_id = '${customer1Id}'
       `);
       expect(checkC1Completed.status).toBe('completed');
@@ -332,7 +332,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
       const slotId = '11110000-0000-0000-0000-000000000001';
       const apptId = '22220000-0000-0000-0000-000000000002';
 
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO slots (id, service_id, start_time, end_time, status)
         VALUES ('${slotId}', '${serviceId}', '${appointmentSlotStart.toISOString()}', '${appointmentSlotEnd.toISOString()}', 'booked');
 
@@ -391,7 +391,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
       const appt2SlotEnd = new Date('2026-11-20T05:30:00.000Z');
       const appt2SlotId = '11110000-0000-0000-0000-000000000003';
       const appt2Id = '22220000-0000-0000-0000-000000000004';
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO slots (id, service_id, start_time, end_time, status)
         VALUES ('${appt2SlotId}', '${serviceId}', '${appt2SlotStart.toISOString()}', '${appt2SlotEnd.toISOString()}', 'booked');
 
@@ -440,7 +440,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
 
     it('estimated wait equals position x the rolling average (with history entries of known durations)', async () => {
       // Insert completed entries with known 10 minute durations (10:00 to 10:10)
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO queue_history (business_id, customer_id, joined_at, called_at, completed_at, status, ticket_number, source, score)
         VALUES
         ('${businessId}', NULL, '2026-11-20 09:00:00+00', '2026-11-20 09:10:00+00', '2026-11-20 09:20:00+00', 'completed', 100, 'walk_in', 1000),

@@ -85,11 +85,45 @@ npm --prefix backend run seed
 
 ### 4. Start Development Servers
 ```bash
-# Start backend (http://localhost:5000)
-npm run dev:backend
+# Start backend and frontend together
+npm run dev
 
-# Start frontend (http://localhost:5173)
-npm run dev:frontend
+# Or run them individually:
+npm run dev:backend   # Express server at http://localhost:5000
+npm run dev:frontend  # Vite React app at http://localhost:5173
+```
+
+---
+
+## 💻 Frontend (Step 8a: Foundation & Customer Pages)
+
+The frontend is a modern React application built with Vite, TypeScript, and Tailwind CSS.
+
+### Architecture & Key Principles
+- **Vite Dev Proxy:** Transparently proxies `/api` and `/socket.io` (with WebSocket support) to `http://localhost:5000`, keeping the app on a single origin so the `httpOnly` refresh cookie works seamlessly with `SameSite=Lax`.
+- **In-Memory JWT Access Token:** The 15-minute access token is kept in memory only (`client.ts`), never written to `localStorage` or `sessionStorage`.
+- **Single-Flight 401 Interceptor:** When multiple simultaneous requests fail with 401, a single-flight promise calls `POST /api/auth/refresh` once, updates the in-memory token, and transparently retries all in-flight requests. If refresh fails, it logs out the session.
+- **Asia/Kolkata Formatting:** All dates and times are formatted in IST using `date-fns-tz` regardless of the browser or OS timezone.
+- **Design System:** Custom components in `frontend/src/components/ui` (Button, Input, Select, Card, Badge, Modal, Skeleton, EmptyState, ErrorState, Toast, Spinner, Pagination, Tabs) featuring Indigo `#4F46E5` primary, soft shadows, rounded-2xl cards, accessible focus rings, and class-based dark mode (saved to `localStorage` and defaulting to system preferences).
+
+### Customer Pages
+1. **Landing Page (`/`):** Hero with business & city search bar, "How it works" guide, and key features.
+2. **Login (`/login`) & Register (`/register`):** Validated forms with inline errors, customer/owner role picker, password strength indicator, and development-only demo fill buttons.
+3. **Business Search (`/businesses`):** Debounced search, category and city filters, pagination, and URL query parameter synchronization.
+4. **Business Detail (`/businesses/:id`):** Header, services list, working hours (IST), horizontal 14-day date scroller, free slot buttons with IST times, confirmation modal with 409 conflict handling, and a reserved "Join live queue" placeholder for Step 8b.
+5. **My Bookings (`/my-bookings`):** Tabs for Upcoming, Past, and Cancelled bookings. Supports cancellation (with 60-minute cutoff validation) and slot rescheduling.
+6. **Notifications (`/notifications`):** Live unread count badge, recent dropdown in navbar, and full paginated notifications list with instant Socket.io updates.
+
+### Frontend Commands
+```bash
+# Run unit & integration tests (Vitest + RTL + MSW)
+npm --prefix frontend test
+
+# Run linter
+npm --prefix frontend run lint
+
+# Build production bundle
+npm --prefix frontend run build
 ```
 
 ---

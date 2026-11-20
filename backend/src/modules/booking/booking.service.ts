@@ -5,6 +5,7 @@ import { withTransaction } from '../../db';
 import { config } from '../../config';
 import { events } from '../../events';
 import { ApiError } from '../../utils/ApiError';
+import { now } from '../../utils/clock';
 import {
   IAppointment,
   AppointmentDetail,
@@ -38,7 +39,7 @@ export class BookingService {
         }
 
         // Slot must start in the future
-        const nowUtc = new Date();
+        const nowUtc = now();
         if (new Date(slot.start_time) <= nowUtc) {
           throw ApiError.badRequest(
             'Cannot book a slot that has already started or is in the past',
@@ -153,9 +154,9 @@ export class BookingService {
 
       // Customer cancellation cutoff rule (default 60 minutes)
       if (isCustomer && !isOwner) {
-        const now = Date.now();
+        const nowMs = now().getTime();
         const startTime = new Date(appt.slot_start_time).getTime();
-        const diffMinutes = (startTime - now) / (1000 * 60);
+        const diffMinutes = (startTime - nowMs) / (1000 * 60);
 
         if (diffMinutes < config.CANCELLATION_CUTOFF_MINUTES) {
           throw ApiError.conflict(
@@ -223,9 +224,9 @@ export class BookingService {
         }
 
         // Cutoff rule on current slot
-        const now = Date.now();
+        const nowMs = now().getTime();
         const currentSlotStart = new Date(appt.slot_start_time).getTime();
-        const diffMinutes = (currentSlotStart - now) / (1000 * 60);
+        const diffMinutes = (currentSlotStart - nowMs) / (1000 * 60);
 
         if (diffMinutes < config.CANCELLATION_CUTOFF_MINUTES) {
           throw ApiError.conflict(
@@ -250,7 +251,7 @@ export class BookingService {
           throw ApiError.conflict('New slot is already booked', 'SLOT_ALREADY_BOOKED');
         }
 
-        if (new Date(newSlot.start_time) <= new Date()) {
+        if (new Date(newSlot.start_time) <= now()) {
           throw ApiError.badRequest('New slot cannot be in the past', 'SLOT_IN_PAST');
         }
 
@@ -341,7 +342,7 @@ export class BookingService {
       }
 
       // Slot must have already started
-      if (new Date(appt.slot_start_time) > new Date()) {
+      if (new Date(appt.slot_start_time) > now()) {
         throw ApiError.badRequest(
           'Cannot mark appointment as completed or no_show before its slot has started',
           'APPOINTMENT_NOT_STARTED'

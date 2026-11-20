@@ -24,7 +24,7 @@ describe('Businesses, Services, Working Hours and Slots Module', () => {
   });
 
   beforeEach(async () => {
-    testDb.resetData();
+    await testDb.resetData();
 
     // 1. Create Admin
     const adminReg = await request(app).post('/api/auth/register').send({

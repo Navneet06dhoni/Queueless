@@ -32,8 +32,8 @@ describe('Auth Module Integration Tests', () => {
     await testDb.cleanup();
   });
 
-  beforeEach(() => {
-    testDb.resetData();
+  beforeEach(async () => {
+    await testDb.resetData();
   });
 
   describe('POST /api/auth/register', () => {
@@ -53,7 +53,7 @@ describe('Auth Module Integration Tests', () => {
       expect(res.body.user.role).toBe('customer');
       expect(res.body.user.password_hash).toBeUndefined(); // no password hash
       expect(res.body.accessToken).toBeDefined();
-      expect(res.body.refreshToken).toBeDefined();
+      expect(res.body.refreshToken).toBeUndefined(); // token is only in httpOnly cookie
 
       // Check httpOnly cookie is set
       const cookies = res.headers['set-cookie'];
@@ -138,7 +138,9 @@ describe('Auth Module Integration Tests', () => {
       expect(res.body.user).toBeDefined();
       expect(res.body.user.email).toBe('priya@example.com');
       expect(res.body.accessToken).toBeDefined();
-      expect(res.body.refreshToken).toBeDefined();
+      expect(res.body.refreshToken).toBeUndefined(); // returned only in cookie
+      expect(res.headers['set-cookie']).toBeDefined();
+      expect(res.headers['set-cookie'][0]).toContain('refreshToken=');
     });
 
     it('should return identical 401 error message for wrong password and unknown email to prevent enumeration', async () => {
@@ -222,24 +224,26 @@ describe('Auth Module Integration Tests', () => {
         role: 'customer',
       });
 
-      const initialRefreshToken = reg.body.refreshToken;
+      const initialCookie = reg.headers['set-cookie'];
+      expect(initialCookie).toBeDefined();
 
-      // Rotate token
+      // Rotate token via cookie
       const refreshRes = await request(app)
         .post('/api/auth/refresh')
-        .send({ refreshToken: initialRefreshToken });
+        .set('Cookie', initialCookie);
 
       expect(refreshRes.status).toBe(200);
       expect(refreshRes.body.accessToken).toBeDefined();
-      expect(refreshRes.body.refreshToken).toBeDefined();
-      expect(refreshRes.body.refreshToken).not.toBe(initialRefreshToken);
-
-      const newRefreshToken = refreshRes.body.refreshToken;
+      expect(refreshRes.body.refreshToken).toBeUndefined(); // only in cookie
+      
+      const newCookie = refreshRes.headers['set-cookie'];
+      expect(newCookie).toBeDefined();
+      expect(newCookie[0]).not.toBe(initialCookie[0]);
 
       // Reusing the old (revoked) refresh token must fail with 401 and revoke family
       const replayRes = await request(app)
         .post('/api/auth/refresh')
-        .send({ refreshToken: initialRefreshToken });
+        .set('Cookie', initialCookie);
 
       expect(replayRes.status).toBe(401);
       expect(replayRes.body.error.code).toBe('TOKEN_COMPROMISED');
@@ -247,7 +251,7 @@ describe('Auth Module Integration Tests', () => {
       // Even the latest token in the family must now be revoked due to compromised family!
       const subsequentRes = await request(app)
         .post('/api/auth/refresh')
-        .send({ refreshToken: newRefreshToken });
+        .set('Cookie', newCookie);
 
       expect(subsequentRes.status).toBe(401);
     });
@@ -262,12 +266,13 @@ describe('Auth Module Integration Tests', () => {
         role: 'customer',
       });
 
-      const refreshToken = reg.body.refreshToken;
+      const regCookie = reg.headers['set-cookie'];
+      expect(regCookie).toBeDefined();
 
-      // Logout
+      // Logout via cookie
       const logoutRes = await request(app)
         .post('/api/auth/logout')
-        .send({ refreshToken });
+        .set('Cookie', regCookie);
 
       expect(logoutRes.status).toBe(200);
       expect(logoutRes.body.message).toContain('logged out');
@@ -275,7 +280,7 @@ describe('Auth Module Integration Tests', () => {
       // Attempting to refresh with logged-out token should fail
       const refreshRes = await request(app)
         .post('/api/auth/refresh')
-        .send({ refreshToken });
+        .set('Cookie', regCookie);
 
       expect(refreshRes.status).toBe(401);
     });

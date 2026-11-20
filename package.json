@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Smart appointment booking and live virtual queue platform for small clinics, salons and local businesses",
   "scripts": {
+    "dev": "concurrently -n \"backend,frontend\" -c \"blue,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
     "build:backend": "npm --prefix backend run build",
@@ -12,7 +13,17 @@
     "seed": "npm --prefix backend run seed",
     "test:backend": "npm --prefix backend run test"
   },
-  "keywords": ["appointment-booking", "virtual-queue", "redis", "postgres", "express", "react"],
+  "keywords": [
+    "appointment-booking",
+    "virtual-queue",
+    "redis",
+    "postgres",
+    "express",
+    "react"
+  ],
   "author": "QueueLess Team",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  }
 }

@@ -6,11 +6,13 @@ import redis from '../src/config/redis';
 import { config } from '../src/config';
 import { generateAccessToken } from '../src/modules/auth/auth.utils';
 import { analyticsRepository } from '../src/modules/analytics/analytics.repository';
+import { setupTestDb, TestDbInstance } from './setupTestDb';
 import bcrypt from 'bcryptjs';
 
 describe('Analytics & Admin Module (Real Postgres & Redis)', () => {
   let app: ReturnType<typeof createApp>;
   let realPool: Pool;
+  let testDb: TestDbInstance;
 
   // Test identities
   let adminId: string;
@@ -26,15 +28,8 @@ describe('Analytics & Admin Module (Real Postgres & Redis)', () => {
   let serviceId: string;
 
   beforeAll(async () => {
-    // Ensure using real postgres connection
-    realPool = new Pool({
-      host: config.DB_HOST,
-      port: config.DB_PORT,
-      user: config.DB_USER,
-      password: config.DB_PASSWORD,
-      database: config.DB_NAME,
-    });
-    setPool(realPool);
+    testDb = await setupTestDb();
+    realPool = testDb.pool;
 
     if (redis.status !== 'ready' && redis.status !== 'connect') {
       try {
@@ -139,7 +134,11 @@ describe('Analytics & Admin Module (Real Postgres & Redis)', () => {
       ]);
     } catch {}
 
-    await realPool.end();
+    if (testDb) {
+      await testDb.cleanup();
+    } else {
+      await realPool.end();
+    }
     try {
       await redis.quit();
     } catch {}

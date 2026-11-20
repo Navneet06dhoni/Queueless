@@ -98,11 +98,11 @@ describe('Notification Module Integration Tests', () => {
 
   beforeEach(async () => {
     clock.resetNow();
-    testDb.resetData();
+    await testDb.resetData();
     await redis.flushdb();
     fakeEmailTransport.reset();
 
-    const fixedNow = new Date('2026-11-20T05:30:00.000Z'); // 11:00 AM IST
+    const fixedNow = clock.now();
     clock.setNow(fixedNow);
 
     adminId = '00000000-0000-0000-0000-000000000001';
@@ -122,7 +122,12 @@ describe('Notification Module Integration Tests', () => {
     slot1Id = '99999999-9999-9999-9999-999999999901';
     slot2Id = '99999999-9999-9999-9999-999999999902';
 
-    testDb.db.public.none(`
+    const slot1Start = new Date(fixedNow.getTime() + 2 * 60 * 60 * 1000);
+    const slot1End = new Date(slot1Start.getTime() + 30 * 60 * 1000);
+    const slot2Start = new Date(slot1End.getTime());
+    const slot2End = new Date(slot2Start.getTime() + 30 * 60 * 1000);
+
+    await testDb.db.public.none(`
       INSERT INTO users (id, name, email, password_hash, role) VALUES
       ('${adminId}', 'Platform Admin', 'admin@queueless.local', 'hash', 'admin'),
       ('${ownerId}', 'Dr. Sharma', 'sharma@clinic.local', 'hash', 'owner'),
@@ -135,14 +140,20 @@ describe('Notification Module Integration Tests', () => {
       INSERT INTO services (id, business_id, name, duration_minutes, price) VALUES
       ('${serviceId}', '${businessId}', 'General Consultation', 30, 500);
 
-      -- Working hours
+      -- Working hours for all days 0-6
       INSERT INTO working_hours (business_id, day_of_week, open_time, close_time) VALUES
-      ('${businessId}', 5, '08:00', '20:00');
+      ('${businessId}', 0, '08:00', '20:00'),
+      ('${businessId}', 1, '08:00', '20:00'),
+      ('${businessId}', 2, '08:00', '20:00'),
+      ('${businessId}', 3, '08:00', '20:00'),
+      ('${businessId}', 4, '08:00', '20:00'),
+      ('${businessId}', 5, '08:00', '20:00'),
+      ('${businessId}', 6, '08:00', '20:00');
 
       -- Future Slots
       INSERT INTO slots (id, service_id, start_time, end_time, status) VALUES
-      ('${slot1Id}', '${serviceId}', '2026-11-20 08:30:00+00', '2026-11-20 09:00:00+00', 'free'),
-      ('${slot2Id}', '${serviceId}', '2026-11-20 09:00:00+00', '2026-11-20 09:30:00+00', 'free');
+      ('${slot1Id}', '${serviceId}', '${slot1Start.toISOString()}', '${slot1End.toISOString()}', 'free'),
+      ('${slot2Id}', '${serviceId}', '${slot2Start.toISOString()}', '${slot2End.toISOString()}', 'free');
     `);
   });
 
@@ -152,14 +163,18 @@ describe('Notification Module Integration Tests', () => {
       const res = await request(app)
         .post('/api/appointments')
         .set('Authorization', `Bearer ${customer1Token}`)
-        .send({ slot_id: slot1Id })
-        .expect(201);
+        .send({ slot_id: slot1Id });
+
+      if (res.status !== 201) {
+        console.error('DEBUG POST /api/appointments failed:', res.status, res.body);
+      }
+      expect(res.status).toBe(201);
 
       // Wait for all async event handlers to complete
       await events.flush();
 
       // 1. Verify Customer Notification & Email
-      const custNotifs = testDb.db.public.many(`
+      const custNotifs = await testDb.db.public.many(`
         SELECT * FROM notifications WHERE user_id = '${customer1Id}'
       `);
       expect(custNotifs).toHaveLength(1);
@@ -171,7 +186,7 @@ describe('Notification Module Integration Tests', () => {
       expect(fakeEmailTransport.sentEmails[0].subject).toContain('Booking Confirmed');
 
       // 2. Verify Owner Notification (In-App only, email not required)
-      const ownerNotifs = testDb.db.public.many(`
+      const ownerNotifs = await testDb.db.public.many(`
         SELECT * FROM notifications WHERE user_id = '${ownerId}'
       `);
       expect(ownerNotifs).toHaveLength(1);
@@ -184,7 +199,7 @@ describe('Notification Module Integration Tests', () => {
 
       // Insert an appointment
       const apptId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO appointments (id, slot_id, customer_id, status)
         VALUES ('${apptId}', '${slot1Id}', '${customer1Id}', 'confirmed');
       `);
@@ -197,7 +212,7 @@ describe('Notification Module Integration Tests', () => {
       await events.flush();
 
       expect(fakeEmailTransport.sentEmails).toHaveLength(1);
-      const rowsFirst = testDb.db.public.many(`SELECT * FROM notifications`);
+      const rowsFirst = await testDb.db.public.many(`SELECT * FROM notifications`);
       expect(rowsFirst).toHaveLength(2); // 1 customer, 1 owner
 
       // Publish the exact same event again
@@ -209,13 +224,13 @@ describe('Notification Module Integration Tests', () => {
 
       // Must NOT produce duplicate rows or duplicate emails
       expect(fakeEmailTransport.sentEmails).toHaveLength(1);
-      const rowsSecond = testDb.db.public.many(`SELECT * FROM notifications`);
+      const rowsSecond = await testDb.db.public.many(`SELECT * FROM notifications`);
       expect(rowsSecond).toHaveLength(2);
     });
 
     it('cancel by customer notifies the owner; cancel by owner notifies customer and sends an email', async () => {
       const apptId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO appointments (id, slot_id, customer_id, status)
         VALUES ('${apptId}', '${slot1Id}', '${customer1Id}', 'confirmed');
       `);
@@ -227,7 +242,7 @@ describe('Notification Module Integration Tests', () => {
       });
       await events.flush();
 
-      const ownerNotifs = testDb.db.public.many(`
+      const ownerNotifs = await testDb.db.public.many(`
         SELECT * FROM notifications WHERE user_id = '${ownerId}' AND type = 'booking.cancelled'
       `);
       expect(ownerNotifs).toHaveLength(1);
@@ -241,7 +256,7 @@ describe('Notification Module Integration Tests', () => {
       });
       await events.flush();
 
-      const custNotifs = testDb.db.public.many(`
+      const custNotifs = await testDb.db.public.many(`
         SELECT * FROM notifications WHERE user_id = '${customer1Id}' AND type = 'booking.cancelled'
       `);
       expect(custNotifs).toHaveLength(1);
@@ -260,7 +275,7 @@ describe('Notification Module Integration Tests', () => {
         upcoming: [{ customerId: customer1Id, position: 5, entryId }],
       });
       await events.flush();
-      expect(testDb.db.public.many(`SELECT * FROM notifications`)).toHaveLength(0);
+      expect(await testDb.db.public.many(`SELECT * FROM notifications`)).toHaveLength(0);
 
       // 2. Position 3 -> stage "near" notification created once
       events.publish('queue.advanced', {
@@ -269,7 +284,7 @@ describe('Notification Module Integration Tests', () => {
       });
       await events.flush();
 
-      const nearNotifs = testDb.db.public.many(`SELECT * FROM notifications WHERE type = 'queue.near'`);
+      const nearNotifs = await testDb.db.public.many(`SELECT * FROM notifications WHERE type = 'queue.near'`);
       expect(nearNotifs).toHaveLength(1);
       expect(fakeEmailTransport.sentEmails).toHaveLength(1);
 
@@ -279,7 +294,7 @@ describe('Notification Module Integration Tests', () => {
         upcoming: [{ customerId: customer1Id, position: 3, entryId }],
       });
       await events.flush();
-      expect(testDb.db.public.many(`SELECT * FROM notifications WHERE type = 'queue.near'`)).toHaveLength(1);
+      expect(await testDb.db.public.many(`SELECT * FROM notifications WHERE type = 'queue.near'`)).toHaveLength(1);
       expect(fakeEmailTransport.sentEmails).toHaveLength(1);
 
       // 3. Position 1 -> stage "next" notification created once
@@ -289,7 +304,7 @@ describe('Notification Module Integration Tests', () => {
       });
       await events.flush();
 
-      const nextNotifs = testDb.db.public.many(`SELECT * FROM notifications WHERE type = 'queue.next'`);
+      const nextNotifs = await testDb.db.public.many(`SELECT * FROM notifications WHERE type = 'queue.next'`);
       expect(nextNotifs).toHaveLength(1);
 
       // 4. Called -> stage "called" notification
@@ -301,12 +316,12 @@ describe('Notification Module Integration Tests', () => {
       });
       await events.flush();
 
-      const calledNotifs = testDb.db.public.many(`SELECT * FROM notifications WHERE type = 'queue.called'`);
+      const calledNotifs = await testDb.db.public.many(`SELECT * FROM notifications WHERE type = 'queue.called'`);
       expect(calledNotifs).toHaveLength(1);
 
       // 5. Walk-in (customerId is null) -> produces nothing
       fakeEmailTransport.reset();
-      const countBefore = testDb.db.public.many(`SELECT * FROM notifications`).length;
+      const countBefore = (await testDb.db.public.many(`SELECT * FROM notifications`)).length;
       events.publish('queue.advanced', {
         businessId,
         calledEntryId: 'walk-in-entry-id',
@@ -315,7 +330,7 @@ describe('Notification Module Integration Tests', () => {
       });
       await events.flush();
 
-      const countAfter = testDb.db.public.many(`SELECT * FROM notifications`).length;
+      const countAfter = (await testDb.db.public.many(`SELECT * FROM notifications`)).length;
       expect(countAfter).toBe(countBefore);
       expect(fakeEmailTransport.sentEmails).toHaveLength(0);
     });
@@ -326,7 +341,7 @@ describe('Notification Module Integration Tests', () => {
       fakeEmailTransport.failCount = 2; // Fails first 2 attempts, succeeds on 3rd
 
       const apptId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO appointments (id, slot_id, customer_id, status)
         VALUES ('${apptId}', '${slot1Id}', '${customer1Id}', 'confirmed');
       `);
@@ -334,7 +349,7 @@ describe('Notification Module Integration Tests', () => {
       events.publish('booking.confirmed', { appointmentId: apptId });
       await events.flush();
 
-      const notif = testDb.db.public.one(`
+      const notif = await testDb.db.public.one(`
         SELECT * FROM notifications WHERE user_id = '${customer1Id}'
       `);
       expect(notif.email_status).toBe('sent');
@@ -346,7 +361,7 @@ describe('Notification Module Integration Tests', () => {
       fakeEmailTransport.alwaysFail = true;
 
       const apptId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO appointments (id, slot_id, customer_id, status)
         VALUES ('${apptId}', '${slot1Id}', '${customer1Id}', 'confirmed');
       `);
@@ -354,7 +369,7 @@ describe('Notification Module Integration Tests', () => {
       events.publish('booking.confirmed', { appointmentId: apptId });
       await events.flush();
 
-      const notif = testDb.db.public.one(`
+      const notif = await testDb.db.public.one(`
         SELECT * FROM notifications WHERE user_id = '${customer1Id}'
       `);
       expect(notif.email_status).toBe('failed');
@@ -370,8 +385,12 @@ describe('Notification Module Integration Tests', () => {
       const res = await request(app)
         .post('/api/appointments')
         .set('Authorization', `Bearer ${customer2Token}`)
-        .send({ slot_id: slot1Id })
-        .expect(201);
+        .send({ slot_id: slot1Id });
+
+      if (res.status !== 201) {
+        console.error('DEBUG RESILIENCE POST /api/appointments failed:', res.status, res.body);
+      }
+      expect(res.status).toBe(201);
 
       const duration = Date.now() - startTime;
       expect(res.body.appointment.id).toBeDefined();
@@ -384,7 +403,7 @@ describe('Notification Module Integration Tests', () => {
   describe('REST API & Admin Failed Delivery Listing', () => {
     it('list, unreadCount, mark read, read-all, 404 on another user notification, admin failed list and customer 403', async () => {
       // Seed notifications
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO notifications (id, user_id, type, title, message, status, email_status) VALUES
         ('11111111-0000-0000-0000-000000000001', '${customer1Id}', 'booking.confirmed', 'Confirmed 1', 'Msg 1', 'unread', 'sent'),
         ('11111111-0000-0000-0000-000000000002', '${customer1Id}', 'booking.confirmed', 'Confirmed 2', 'Msg 2', 'unread', 'failed'),
@@ -447,7 +466,7 @@ describe('Notification Module Integration Tests', () => {
 
   describe('Appointment Reminder Background Job', () => {
     it('appointment 30 minutes away gets exactly 1 reminder; running twice or concurrently sends 1; appointment 3 hours away gets none', async () => {
-      const nowTime = new Date('2026-11-20T05:30:00.000Z'); // 11:00 AM IST
+      const nowTime = clock.now();
       clock.setNow(nowTime);
 
       const nearSlotStart = new Date(nowTime.getTime() + 30 * 60 * 1000); // 11:30 AM (30 min away)
@@ -458,7 +477,7 @@ describe('Notification Module Integration Tests', () => {
       const nearApptId = '22220000-0000-0000-0000-000000000010';
       const farApptId = '22220000-0000-0000-0000-000000000020';
 
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO slots (id, service_id, start_time, end_time, status) VALUES
         ('${nearSlotId}', '${serviceId}', '${nearSlotStart.toISOString()}', '${new Date(nearSlotStart.getTime() + 30 * 60 * 1000).toISOString()}', 'booked'),
         ('${farSlotId}', '${serviceId}', '${farSlotStart.toISOString()}', '${new Date(farSlotStart.getTime() + 30 * 60 * 1000).toISOString()}', 'booked');
@@ -485,7 +504,7 @@ describe('Notification Module Integration Tests', () => {
       expect(fakeEmailTransport.sentEmails).toHaveLength(1); // Still 1
 
       // Verify the far appointment (3 hours away) was never reminded
-      const farCheck = testDb.db.public.one(`
+      const farCheck = await testDb.db.public.one(`
         SELECT reminder_sent_at FROM appointments WHERE id = '${farApptId}'
       `);
       expect(farCheck.reminder_sent_at).toBeNull();
@@ -497,7 +516,7 @@ describe('Notification Module Integration Tests', () => {
       const maliciousName = '<script>alert("xss")</script>';
       const maliciousUserId = '99999999-0000-0000-0000-000000000099';
 
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO users (id, name, email, password_hash, role)
         VALUES ('${maliciousUserId}', '${maliciousName}', 'xss@test.local', 'hash', 'customer');
 
@@ -544,7 +563,7 @@ describe('Notification Module Integration Tests', () => {
 
       // Dispatch notification to Customer 1 only
       const apptId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-      testDb.db.public.none(`
+      await testDb.db.public.none(`
         INSERT INTO appointments (id, slot_id, customer_id, status)
         VALUES ('${apptId}', '${slot1Id}', '${customer1Id}', 'confirmed');
       `);

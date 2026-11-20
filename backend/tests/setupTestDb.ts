@@ -1,96 +1,85 @@
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
-import { newDb, IMemoryDb } from 'pg-mem';
+import { Pool, QueryResult, QueryResultRow } from 'pg';
+import { config } from '../src/config';
 import { setPool } from '../src/db';
+import { events } from '../src/events';
+import { getDbNameFromUrl, assertTestDatabaseName } from './globalSetup';
 
 export interface TestDbInstance {
-  db: IMemoryDb;
-  pool: any;
+  pool: Pool;
   cleanup: () => Promise<void>;
-  resetData: () => void;
+  resetData: () => Promise<void>;
+  query: <T extends QueryResultRow = any>(text: string, params?: any[]) => Promise<QueryResult<T>>;
+  db: {
+    public: {
+      none: (sql: string, params?: any[]) => Promise<void>;
+      many: <T = any>(sql: string, params?: any[]) => Promise<T[]>;
+      one: <T = any>(sql: string, params?: any[]) => Promise<T>;
+    };
+  };
 }
 
 export const setupTestDb = async (): Promise<TestDbInstance> => {
-  const memDb = newDb();
+  const testDbUrl = config.TEST_DATABASE_URL;
+  const dbName = getDbNameFromUrl(testDbUrl);
 
-  // Register extensions & functions
-  memDb.registerExtension('pgcrypto', () => {});
-  memDb.public.registerFunction({
-    name: 'gen_random_uuid',
-    impure: true,
-    implementation: () => crypto.randomUUID(),
+  // Safety check: REFUSE to run unless database name ends with _test
+  assertTestDatabaseName(dbName);
+
+  const testPool = new Pool({
+    connectionString: testDbUrl,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
   });
-
-  // Apply migrations 001 and 002
-  const mig001 = fs.readFileSync(
-    path.join(__dirname, '../src/db/migrations/001_initial_schema.sql'),
-    'utf-8'
-  );
-  memDb.public.none(mig001);
-
-  const mig002 = fs.readFileSync(
-    path.join(__dirname, '../src/db/migrations/002_refresh_tokens.sql'),
-    'utf-8'
-  );
-  memDb.public.none(mig002);
-
-  const mig003 = fs.readFileSync(
-    path.join(__dirname, '../src/db/migrations/003_business_search_indexes.sql'),
-    'utf-8'
-  );
-  memDb.public.none(mig003);
-
-  const mig004 = fs.readFileSync(
-    path.join(__dirname, '../src/db/migrations/004_appointments_partial_unique_index.sql'),
-    'utf-8'
-  );
-  memDb.public.none(mig004);
-
-  const mig005 = fs.readFileSync(
-    path.join(__dirname, '../src/db/migrations/005_queue_system.sql'),
-    'utf-8'
-  );
-  memDb.public.none(mig005);
-
-  const mig006 = fs.readFileSync(
-    path.join(__dirname, '../src/db/migrations/006_notifications_system.sql'),
-    'utf-8'
-  );
-  memDb.public.none(mig006);
-
-  const mig007 = fs.readFileSync(
-    path.join(__dirname, '../src/db/migrations/007_analytics_and_admin.sql'),
-    'utf-8'
-  );
-  memDb.public.none(mig007);
-
-  const adapter = memDb.adapters.createPg();
-  const testPool = new adapter.Pool();
 
   setPool(testPool);
 
-  const resetData = () => {
-    memDb.public.none('DELETE FROM admin_audit_log;');
-    memDb.public.none('DELETE FROM refresh_tokens;');
-    memDb.public.none('DELETE FROM notifications;');
-    memDb.public.none('DELETE FROM queue_history;');
-    memDb.public.none('DELETE FROM appointments;');
-    memDb.public.none('DELETE FROM slots;');
-    memDb.public.none('DELETE FROM working_hours;');
-    memDb.public.none('DELETE FROM services;');
-    memDb.public.none('DELETE FROM businesses;');
-    memDb.public.none('DELETE FROM users;');
+  const resetData = async () => {
+    // Wait for in-flight async events to complete before wiping tables
+    await events.flush();
+
+    await testPool.query(`
+      TRUNCATE TABLE 
+        admin_audit_log,
+        notifications,
+        queue_history,
+        appointments,
+        slots,
+        working_hours,
+        services,
+        businesses,
+        refresh_tokens,
+        users
+      RESTART IDENTITY CASCADE;
+    `);
   };
 
   const cleanup = async () => {
-    await testPool.end();
+    await events.flush();
+    if (!(testPool as any).ending && !(testPool as any).ended) {
+      await testPool.end();
+    }
   };
 
   return {
-    db: memDb,
     pool: testPool,
     cleanup,
     resetData,
+    query: (text, params) => testPool.query(text, params) as any,
+    db: {
+      public: {
+        none: async (sql, params) => {
+          await testPool.query(sql, params);
+        },
+        many: async (sql, params) => {
+          const res = await testPool.query(sql, params);
+          return res.rows as any;
+        },
+        one: async (sql, params) => {
+          const res = await testPool.query(sql, params);
+          return res.rows[0] as any;
+        },
+      },
+    },
   };
 };

@@ -19,6 +19,7 @@ const envSchema = z.object({
   DB_NAME: z.string().default('queueless'),
   DB_POOL_MAX: z.coerce.number().default(20),
   DATABASE_URL: z.string().optional(),
+  TEST_DATABASE_URL: z.string().default('postgresql://postgres:postgrespassword@localhost:5432/queueless_test'),
 
   // Booking & Appointments
   CANCELLATION_CUTOFF_MINUTES: z.coerce.number().default(60),

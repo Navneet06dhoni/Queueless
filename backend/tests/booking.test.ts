@@ -461,6 +461,9 @@ describe('Booking & Concurrency-Safe Locking Module', () => {
     });
 
     it('RACE: customer A cancels while customer B books the same slot at the same moment (20 times in a loop)', async () => {
+      let count201 = 0;
+      let count409 = 0;
+
       for (let i = 0; i < 20; i++) {
         const custA = await createCustomer(100 + i * 2);
         const custB = await createCustomer(100 + i * 2 + 1);
@@ -476,16 +479,32 @@ describe('Booking & Concurrency-Safe Locking Module', () => {
         expect(bookA.status).toBe(201);
         const apptAId = bookA.body.appointment.id;
 
+        // Introduce a small delay on one of the two requests so both arrival orders occur
+        // Book fails early (~3ms) if slot is booked, whereas cancel takes ~12-18ms to commit.
+        // We use a small delay (0 to 20ms) so in some iterations cancel commits first (yielding 201)
+        // and in other iterations book locks the slot while still booked (yielding 409).
+        const delayCancel = i % 2 === 0 ? Math.floor(Math.random() * 5) : 0;
+        const delayBook = i % 2 === 1 ? Math.floor(Math.random() * 15 + 8) : 0;
+
         // Customer A cancels while Customer B attempts to book the same slot at the same moment
         const [cancelRes, bookRes] = await Promise.all([
-          request(app)
-            .delete(`/api/appointments/${apptAId}`)
-            .set('Authorization', `Bearer ${custA.token}`),
-          request(app)
-            .post('/api/appointments')
-            .set('Authorization', `Bearer ${custB.token}`)
-            .send({ slot_id: slot.id }),
+          (async () => {
+            if (delayCancel > 0) await new Promise((r) => setTimeout(r, delayCancel));
+            return request(app)
+              .delete(`/api/appointments/${apptAId}`)
+              .set('Authorization', `Bearer ${custA.token}`);
+          })(),
+          (async () => {
+            if (delayBook > 0) await new Promise((r) => setTimeout(r, delayBook));
+            return request(app)
+              .post('/api/appointments')
+              .set('Authorization', `Bearer ${custB.token}`)
+              .send({ slot_id: slot.id });
+          })(),
         ]);
+
+        if (bookRes.status === 201) count201++;
+        if (bookRes.status === 409) count409++;
 
         // Neither should fail with 500 or deadlock
         expect(cancelRes.status).not.toBe(500);
@@ -522,6 +541,10 @@ describe('Booking & Concurrency-Safe Locking Module', () => {
           expect(bookRes.status).toBe(409);
         }
       }
+
+      console.log(`[RACE TALLY] 201 Created: ${count201}, 409 Conflict: ${count409} (Total: ${count201 + count409})`);
+      expect(count201).toBeGreaterThan(0);
+      expect(count409).toBeGreaterThan(0);
     }, 60000);
   });
 

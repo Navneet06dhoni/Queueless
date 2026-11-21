@@ -3,20 +3,24 @@ import { io, Socket } from 'socket.io-client';
 import { getAccessToken } from '../api/client';
 import { useAuth } from './AuthContext';
 
+export type SocketConnectionStatus = 'connected' | 'reconnecting' | 'offline';
+
 interface SocketContextValue {
   socket: Socket | null;
   isConnected: boolean;
+  status: SocketConnectionStatus;
 }
 
 const SocketContext = createContext<SocketContextValue>({
   socket: null,
   isConnected: false,
+  status: 'offline',
 });
 
 export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [status, setStatus] = useState<SocketConnectionStatus>('offline');
 
   useEffect(() => {
     const token = getAccessToken();
@@ -24,7 +28,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (socket) {
         socket.disconnect();
         setSocket(null);
-        setIsConnected(false);
+        setStatus('offline');
       }
       return;
     }
@@ -36,18 +40,33 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
 
     s.on('connect', () => {
-      setIsConnected(true);
+      setStatus('connected');
     });
 
-    s.on('disconnect', () => {
-      setIsConnected(false);
+    s.on('disconnect', (reason) => {
+      if (reason === 'io client disconnect') {
+        setStatus('offline');
+      } else {
+        setStatus('reconnecting');
+      }
     });
 
-    s.on('connect_error', (err) => {
-      console.warn('[Socket] Connection error:', err.message);
+    s.on('connect_error', () => {
+      setStatus('reconnecting');
+    });
+
+    s.io.on('reconnect_attempt', () => {
+      setStatus('reconnecting');
+    });
+
+    s.io.on('reconnect_failed', () => {
+      setStatus('offline');
     });
 
     setSocket(s);
@@ -65,13 +84,14 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (socket && token) {
       socket.auth = { token };
       if (!socket.connected) {
+        setStatus('reconnecting');
         socket.connect();
       }
     }
   }, [socket]);
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
+    <SocketContext.Provider value={{ socket, isConnected: status === 'connected', status }}>
       {children}
     </SocketContext.Provider>
   );

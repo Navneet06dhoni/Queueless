@@ -114,18 +114,29 @@ export const Navbar: React.FC = () => {
               </Link>
 
               {user?.role === 'customer' && (
-                <Link
-                  to="/my-bookings"
-                  className="px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/60 dark:hover:bg-gray-800 transition-colors"
-                >
-                  My Bookings
-                </Link>
+                <>
+                  <Link
+                    to="/my-bookings"
+                    className="px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/60 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    My Bookings
+                  </Link>
+                  <Link
+                    to="/queue"
+                    className="px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/60 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    Live Queue
+                  </Link>
+                </>
               )}
 
-              {user?.role === 'owner' && (
-                <span className="px-3 py-2 rounded-xl text-sm font-medium text-gray-400 dark:text-gray-500 cursor-not-allowed">
-                  Owner Dashboard (8b)
-                </span>
+              {(user?.role === 'owner' || user?.role === 'admin') && (
+                <Link
+                  to="/owner"
+                  className="px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/60 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Owner Dashboard
+                </Link>
               )}
 
               {user?.role === 'admin' && (
@@ -342,12 +353,31 @@ export const Navbar: React.FC = () => {
           </Link>
 
           {user?.role === 'customer' && (
+            <>
+              <Link
+                to="/my-bookings"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2 text-sm font-medium text-gray-800 dark:text-gray-200"
+              >
+                My Bookings
+              </Link>
+              <Link
+                to="/queue"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2 text-sm font-medium text-gray-800 dark:text-gray-200"
+              >
+                Live Virtual Queue
+              </Link>
+            </>
+          )}
+
+          {(user?.role === 'owner' || user?.role === 'admin') && (
             <Link
-              to="/my-bookings"
+              to="/owner"
               onClick={() => setMobileMenuOpen(false)}
               className="block py-2 text-sm font-medium text-gray-800 dark:text-gray-200"
             >
-              My Bookings
+              Owner Dashboard
             </Link>
           )}
 

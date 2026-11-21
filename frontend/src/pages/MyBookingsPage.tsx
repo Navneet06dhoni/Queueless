@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { bookingApi, businessApi } from '../api';
+import { bookingApi, businessApi, queueApi } from '../api';
 import { AppointmentDetail } from '../api/types';
 import { formatDate, formatTime, formatDateTime } from '../utils/date';
 import { useToast } from '../components/ui/Toast';
@@ -21,10 +22,28 @@ import {
 } from 'lucide-react';
 
 export const MyBookingsPage: React.FC = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past' | 'cancelled'>('upcoming');
   const [page, setPage] = useState(1);
   const toast = useToast();
   const queryClient = useQueryClient();
+
+  // Check-In Mutation
+  const checkInMutation = useMutation({
+    mutationFn: ({ businessId, appointmentId }: { businessId: string; appointmentId: string }) =>
+      queueApi.checkIn(businessId, appointmentId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['queue'] });
+      toast.success(
+        `Checked in successfully! You are ticket #${res.ticketNumber}, position ${res.position}.`
+      );
+      navigate('/queue');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.error?.message || 'Check-in failed';
+      toast.error(msg);
+    },
+  });
 
   // Cancel Modal State
   const [cancelTarget, setCancelTarget] = useState<AppointmentDetail | null>(null);
@@ -234,7 +253,35 @@ export const MyBookingsPage: React.FC = () => {
 
                   {/* Actions for upcoming bookings */}
                   {activeTab === 'upcoming' && appt.status === 'confirmed' && (
-                    <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
+                    <div className="pt-4 mt-4 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-end gap-2">
+                      {(() => {
+                        const nowMs = Date.now();
+                        const startMs = new Date(appt.slot.start_time).getTime();
+                        const diffMinutes = (startMs - nowMs) / (60 * 1000);
+                        // Start time is within 30 minutes before or after now (IST)
+                        const isWithin30MinWindow = diffMinutes >= -30 && diffMinutes <= 30;
+                        if (!isWithin30MinWindow) return null;
+
+                        const isPending =
+                          checkInMutation.isPending &&
+                          (checkInMutation.variables as any)?.appointmentId === appt.id;
+
+                        return (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            isLoading={isPending}
+                            onClick={() =>
+                              checkInMutation.mutate({
+                                businessId: appt.business.id,
+                                appointmentId: appt.id,
+                              })
+                            }
+                          >
+                            Check in and join the queue
+                          </Button>
+                        );
+                      })()}
                       <Button
                         variant="outline"
                         size="sm"

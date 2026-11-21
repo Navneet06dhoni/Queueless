@@ -157,3 +157,146 @@ export interface ApiErrorResponse {
     details?: any;
   };
 }
+
+// --- Queue Types (Step 8b) ---
+export type QueueEntrySource = 'online' | 'appointment' | 'walk_in';
+export type QueueEntryStatus = 'waiting' | 'called' | 'completed' | 'skipped' | 'left';
+
+export interface PublicQueueStatus {
+  isOpen: boolean;
+  waitingCount: number;
+  nowServing: number | null;
+  estimatedWaitMinutesForNewJoiner: number;
+  businessId?: string;
+}
+
+export interface CustomerQueuePosition {
+  ticketNumber: number;
+  position: number;
+  peopleAhead: number;
+  estimatedWaitMinutes: number;
+  status: QueueEntryStatus;
+  businessId?: string;
+  businessName?: string;
+}
+
+export interface JoinQueueResponse {
+  ticketNumber: number;
+  position: number;
+  estimatedWaitMinutes: number;
+}
+
+export interface OwnerQueueWaitingItem {
+  id: string;
+  ticketNumber: number;
+  name: string;
+  source: QueueEntrySource;
+  waitingSince: string;
+  score: number;
+  customerId: string | null;
+}
+
+export interface OwnerQueueCurrentItem {
+  id: string;
+  ticketNumber: number;
+  name: string;
+  source: QueueEntrySource;
+  calledAt: string;
+  customerId: string | null;
+}
+
+export interface OwnerQueueDetails {
+  current: OwnerQueueCurrentItem | null;
+  waiting: OwnerQueueWaitingItem[];
+  servedToday: number;
+  waitingCount: number;
+  skippedToday: number;
+}
+
+// --- Socket Event Payloads ---
+export interface QueueUpdatedPayload extends PublicQueueStatus {
+  businessId: string;
+}
+
+export type QueuePositionPayload = CustomerQueuePosition;
+
+export interface QueueCalledPayload {
+  businessId: string;
+  ticketNumber: number;
+}
+
+export interface QueueRemovedPayload {
+  businessId: string;
+  status: string;
+}
+
+export type QueueOwnerUpdatedPayload = OwnerQueueDetails;
+
+export interface NotificationNewPayload {
+  id: string;
+  type: string;
+  title: string | null;
+  message: string;
+  data: any;
+  createdAt: string;
+}
+
+// --- Analytics Types (Step 8b) ---
+export interface QueueAnalytics {
+  totalServed: number;
+  skipped: number;
+  left: number;
+  walkInCount: number;
+  onlineCount: number;
+  appointmentCount: number;
+}
+
+export interface EstimateAccuracy {
+  sampleSize: number;
+  meanAbsoluteErrorMinutes: number | null;
+}
+
+export interface AppointmentAnalytics {
+  confirmed: number;
+  completed: number;
+  noShow: number;
+  cancelled: number;
+  noShowRate: number | null;
+}
+
+export interface PeakHourItem {
+  hour: number;
+  count: number;
+}
+
+export interface DailyAnalyticsItem {
+  date: string;
+  served: number;
+  averageWaitMinutes: number | null;
+}
+
+export interface BusinessSummaryAnalytics {
+  queue: QueueAnalytics;
+  averageWaitMinutes: number | null;
+  medianWaitMinutes: number | null;
+  averageServiceMinutes: number | null;
+  estimateAccuracy: EstimateAccuracy;
+  appointments: AppointmentAnalytics;
+  slotUtilization: number | null;
+  peakHours: PeakHourItem[];
+  daily: DailyAnalyticsItem[];
+}
+
+export interface NextAppointmentItem {
+  appointmentId: string;
+  customerName: string;
+  serviceName: string;
+  startTime: string;
+}
+
+export interface BusinessTodayAnalytics {
+  waitingNow: number;
+  servedToday: number;
+  averageWaitMinutesToday: number | null;
+  nextAppointments: NextAppointmentItem[];
+}

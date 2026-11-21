@@ -12,6 +12,13 @@ import {
   AppointmentDetail,
   User,
   INotification,
+  PublicQueueStatus,
+  CustomerQueuePosition,
+  JoinQueueResponse,
+  OwnerQueueCurrentItem,
+  OwnerQueueDetails,
+  BusinessSummaryAnalytics,
+  BusinessTodayAnalytics,
 } from './types';
 
 export * from './types';
@@ -66,6 +73,24 @@ export const businessApi = {
     });
     return res.data.slots;
   },
+  getOwnerBusinesses: async (signal?: AbortSignal): Promise<IBusiness[]> => {
+    const res = await api.get<{ businesses: IBusiness[] }>('/businesses/mine', { signal });
+    return res.data.businesses;
+  },
+  getBusinessAppointments: async (
+    businessId: string,
+    date: string,
+    signal?: AbortSignal
+  ): Promise<AppointmentDetail[]> => {
+    const res = await api.get<{ appointments: AppointmentDetail[] }>(
+      `/businesses/${businessId}/appointments`,
+      {
+        params: { date },
+        signal,
+      }
+    );
+    return res.data.appointments;
+  },
 };
 
 export const bookingApi = {
@@ -100,6 +125,134 @@ export const bookingApi = {
       }
     );
     return res.data;
+  },
+  updateAppointmentStatus: async (
+    id: string,
+    status: 'completed' | 'no_show'
+  ): Promise<AppointmentDetail> => {
+    const res = await api.patch<{ appointment: AppointmentDetail }>(
+      `/appointments/${id}/status`,
+      { status }
+    );
+    return res.data.appointment;
+  },
+};
+
+export const queueApi = {
+  getPublicStatus: async (
+    businessId: string,
+    signal?: AbortSignal
+  ): Promise<PublicQueueStatus> => {
+    const res = await api.get<PublicQueueStatus>(`/queue/${businessId}/status`, { signal });
+    return res.data;
+  },
+  getMyActive: async (
+    signal?: AbortSignal
+  ): Promise<CustomerQueuePosition & { businessId: string; businessName: string }> => {
+    const res = await api.get<CustomerQueuePosition & { businessId: string; businessName: string }>(
+      '/queue/me',
+      { signal }
+    );
+    return res.data;
+  },
+  getPosition: async (
+    businessId: string,
+    signal?: AbortSignal
+  ): Promise<CustomerQueuePosition> => {
+    const res = await api.get<CustomerQueuePosition>(`/queue/${businessId}/position`, { signal });
+    return res.data;
+  },
+  join: async (businessId: string): Promise<JoinQueueResponse> => {
+    const res = await api.post<JoinQueueResponse>(`/queue/${businessId}/join`);
+    return res.data;
+  },
+  checkIn: async (businessId: string, appointmentId: string): Promise<JoinQueueResponse> => {
+    const res = await api.post<JoinQueueResponse>(`/queue/${businessId}/check-in`, {
+      appointment_id: appointmentId,
+    });
+    return res.data;
+  },
+  leave: async (businessId: string): Promise<{ success: boolean; message: string }> => {
+    const res = await api.post<{ success: boolean; message: string }>(`/queue/${businessId}/leave`);
+    return res.data;
+  },
+  callNext: async (businessId: string): Promise<{ current: OwnerQueueCurrentItem }> => {
+    const res = await api.post<{ current: OwnerQueueCurrentItem }>(`/queue/${businessId}/next`);
+    return res.data;
+  },
+  completeCurrent: async (businessId: string): Promise<{ success: boolean; message: string }> => {
+    const res = await api.post<{ success: boolean; message: string }>(`/queue/${businessId}/complete`);
+    return res.data;
+  },
+  skipCurrent: async (
+    businessId: string,
+    requeue = false
+  ): Promise<{ success: boolean; requeued: boolean }> => {
+    const res = await api.post<{ success: boolean; requeued: boolean }>(
+      `/queue/${businessId}/skip`,
+      { requeue }
+    );
+    return res.data;
+  },
+  addWalkIn: async (businessId: string, name: string): Promise<JoinQueueResponse> => {
+    const res = await api.post<JoinQueueResponse>(`/queue/${businessId}/walk-in`, { name });
+    return res.data;
+  },
+  toggleQueueOpen: async (businessId: string, open: boolean): Promise<{ queue_open: boolean }> => {
+    const res = await api.patch<{ queue_open: boolean }>(`/queue/${businessId}/open`, { open });
+    return res.data;
+  },
+  getOwnerQueue: async (
+    businessId: string,
+    signal?: AbortSignal
+  ): Promise<OwnerQueueDetails> => {
+    const res = await api.get<OwnerQueueDetails>(`/queue/${businessId}`, { signal });
+    return res.data;
+  },
+};
+
+export const analyticsApi = {
+  getSummary: async (
+    businessId: string,
+    params?: { from?: string; to?: string },
+    signal?: AbortSignal
+  ): Promise<BusinessSummaryAnalytics> => {
+    const res = await api.get<BusinessSummaryAnalytics>(
+      `/analytics/business/${businessId}/summary`,
+      {
+        params,
+        signal,
+      }
+    );
+    return res.data;
+  },
+  getToday: async (businessId: string, signal?: AbortSignal): Promise<BusinessTodayAnalytics> => {
+    const res = await api.get<BusinessTodayAnalytics>(`/analytics/business/${businessId}/today`, {
+      signal,
+    });
+    return res.data;
+  },
+  exportCsv: async (
+    businessId: string,
+    params?: { from?: string; to?: string },
+    signal?: AbortSignal
+  ): Promise<{ data: Blob; filename: string }> => {
+    const res = await api.get(`/analytics/business/${businessId}/export.csv`, {
+      params,
+      signal,
+      responseType: 'blob',
+    });
+
+    let filename = `queueless-${businessId}.csv`;
+    const disposition = res.headers['content-disposition'];
+    if (disposition && disposition.includes('filename=')) {
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    return { data: res.data, filename };
   },
 };
 

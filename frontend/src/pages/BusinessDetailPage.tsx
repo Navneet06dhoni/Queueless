@@ -6,6 +6,7 @@ import { ISlot } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ui/Toast';
 import { formatDate, formatTime, formatDateTime } from '../utils/date';
+import { BusinessQueueCard } from '../components/BusinessQueueCard';
 import {
   Card,
   Badge,
@@ -21,7 +22,6 @@ import {
   Clock,
   Calendar,
   AlertCircle,
-  Users,
   IndianRupee,
   Sparkles,
 } from 'lucide-react';
@@ -201,28 +201,8 @@ export const BusinessDetailPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Reserved Live Queue Card Placeholder (8b) */}
-          <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-dashed border-gray-200 dark:border-gray-700 max-w-sm">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-gray-300">
-                <Users className="w-4 h-4 text-gray-400" /> Live Virtual Queue
-              </div>
-              <Badge variant="neutral" size="sm">
-                Coming in 8b
-              </Badge>
-            </div>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">
-              Live waitlist management & real-time ticket calling will be activated in Step 8b.
-            </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled
-              className="w-full mt-2.5 opacity-60 cursor-not-allowed text-xs py-1"
-            >
-              Join Live Queue (8b)
-            </Button>
-          </div>
+          {/* Live Virtual Queue Card (Step 8b) */}
+          <BusinessQueueCard businessId={business.id} />
         </div>
       </div>
 

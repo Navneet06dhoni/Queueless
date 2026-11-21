@@ -95,7 +95,7 @@ npm run dev:frontend  # Vite React app at http://localhost:5173
 
 ---
 
-## 💻 Frontend (Step 8a: Foundation & Customer Pages)
+## 💻 Frontend (Step 8a & 8b: Foundation, Live Queue & Owner Dashboard)
 
 The frontend is a modern React application built with Vite, TypeScript, and Tailwind CSS.
 
@@ -103,16 +103,66 @@ The frontend is a modern React application built with Vite, TypeScript, and Tail
 - **Vite Dev Proxy:** Transparently proxies `/api` and `/socket.io` (with WebSocket support) to `http://localhost:5000`, keeping the app on a single origin so the `httpOnly` refresh cookie works seamlessly with `SameSite=Lax`.
 - **In-Memory JWT Access Token:** The 15-minute access token is kept in memory only (`client.ts`), never written to `localStorage` or `sessionStorage`.
 - **Single-Flight 401 Interceptor:** When multiple simultaneous requests fail with 401, a single-flight promise calls `POST /api/auth/refresh` once, updates the in-memory token, and transparently retries all in-flight requests. If refresh fails, it logs out the session.
+- **Real-Time Socket Layer (`useQueueSocket`):** Subscribes with `queue:watch` (or `queue:watch-owner`), auto-resubscribes and refetches on reconnect, updates React Query cache directly via `setQueryData`, and falls back to a 15-second REST polling interval when disconnected.
+- **Code Splitting & Bundle Optimization:** The Owner Dashboard and Recharts analytics chunk are lazy-loaded via `React.lazy` and `Suspense`, ensuring customer pages download under 13 kB gzipped JS.
 - **Asia/Kolkata Formatting:** All dates and times are formatted in IST using `date-fns-tz` regardless of the browser or OS timezone.
-- **Design System:** Custom components in `frontend/src/components/ui` (Button, Input, Select, Card, Badge, Modal, Skeleton, EmptyState, ErrorState, Toast, Spinner, Pagination, Tabs) featuring Indigo `#4F46E5` primary, soft shadows, rounded-2xl cards, accessible focus rings, and class-based dark mode (saved to `localStorage` and defaulting to system preferences).
+- **Accessibility & Motion:** Live screen-reader updates via `aria-live="polite"`, full keyboard shortcuts (`N` for Call Next), and animations that honor `prefers-reduced-motion`.
 
-### Customer Pages
+### Pages & Core Features
 1. **Landing Page (`/`):** Hero with business & city search bar, "How it works" guide, and key features.
-2. **Login (`/login`) & Register (`/register`):** Validated forms with inline errors, customer/owner role picker, password strength indicator, and development-only demo fill buttons.
+2. **Login (`/login`) & Register (`/register`):** Validated forms with inline errors, customer/owner role picker, password strength indicator, and demo fill buttons.
 3. **Business Search (`/businesses`):** Debounced search, category and city filters, pagination, and URL query parameter synchronization.
-4. **Business Detail (`/businesses/:id`):** Header, services list, working hours (IST), horizontal 14-day date scroller, free slot buttons with IST times, confirmation modal with 409 conflict handling, and a reserved "Join live queue" placeholder for Step 8b.
-5. **My Bookings (`/my-bookings`):** Tabs for Upcoming, Past, and Cancelled bookings. Supports cancellation (with 60-minute cutoff validation) and slot rescheduling.
-6. **Notifications (`/notifications`):** Live unread count badge, recent dropdown in navbar, and full paginated notifications list with instant Socket.io updates.
+4. **Business Detail (`/businesses/:id`):** Services list, working hours, 14-day interactive slot booking, and real-time **Live Virtual Queue Card** (open/closed state, waiting count, now serving, estimated wait, and Join button).
+5. **Live Virtual Queue (`/queue` - Customer Only):** Centered ticket display, live position & countdown, smooth progress indicator, persistent "It is your turn" counter banner, synthetic web audio chime with localStorage mute toggle, haptic vibration, and Leave queue confirmation modal.
+6. **Global Queue Banner:** Persistent top banner shown across all routes while the customer has an active queue entry with a one-click link to `/queue`.
+7. **My Bookings (`/my-bookings`):** Upcoming/Past/Cancelled bookings, slot rescheduling, cancellation cutoff rules, and a **"Check in and join the queue"** button appearing strictly within 30 minutes of appointment start time.
+8. **Owner Dashboard (`/owner` - Owner Only):**
+   - **Business Selector:** Switch between owned approved businesses, with pending/rejected status notices.
+   - **Live Queue Desk:** Tablet/mobile optimized, "Now Serving" card with running timer, large "Call Next Customer" button (with keyboard shortcut `N` and double-click safety), complete customer action, skip dialog (permanent or move to end), walk-in form (max 80 chars), and queue open/close toggle.
+   - **Today Tab:** Today's scheduled appointments with "Mark Completed" and "Mark No-Show" actions (confirmed appointments that have started), plus upcoming appointments preview.
+   - **Analytics Tab:** Range selector (7, 14, 30 days), KPI cards (served, avg wait, median wait, avg service time, no-show rate, slot utilization, estimate accuracy), Recharts line chart (daily volume & avg wait trend), 24-hour peak traffic bar chart (highlighting busiest IST hour), customer acquisition donut chart, and CSV export with in-memory Bearer token.
+
+---
+
+## 👥 Live Demo Script (Two Browser Windows)
+
+Follow this script to demonstrate the real-time virtual queue and owner desk to an evaluator:
+
+### Setup & Credentials
+- **Owner Window (Window 1):** Incognito or Chrome profile
+  - URL: `http://localhost:5173/login`
+  - Email: `owner1@clinic.in`
+  - Password: `OwnerPassword123`
+  - Navigate to **Owner Dashboard** (`/owner`). Select "Apollo Dental Clinic". Note the queue shows **Open**.
+- **Customer Window (Window 2):** Standard window or second profile
+  - URL: `http://localhost:5173/login`
+  - Email: `customer1@example.com`
+  - Password: `CustomerPassword123`
+
+### Step-by-Step Live Flow
+1. **Join Queue as Customer:**
+   - In Customer Window, browse to `/businesses` $\rightarrow$ click **Apollo Dental Clinic**.
+   - Notice the Live Virtual Queue card displaying current wait and status. Click **Join Live Queue**.
+   - The customer is automatically routed to `/queue` and issued **Ticket #1** ("You are #1, No one ahead of you").
+2. **Instant Sync in Owner Window:**
+   - Look at the Owner Desk in Window 1: Ticket #1 (`customer1`) instantly appears in the **Waiting List** without refreshing the page!
+3. **Add a Walk-in Customer (Owner Desk):**
+   - In Owner Window, type "Ramesh Kumar" in the **Add Walk-in** form and click **Add to Virtual Queue**.
+   - Ramesh is issued **Ticket #2** at Position #2.
+4. **Call Next Customer:**
+   - In Owner Window, click the large **Call Next Customer** button (or press the **N** key on your keyboard).
+   - Ticket #1 is called! The "Now Serving" card displays Ticket #1 with a running service timer.
+5. **Instant "It is your turn" Alert (Customer Screen):**
+   - Look at Customer Window (Window 2): The screen instantly changes to the highlighted amber **"It is your turn!"** panel, document title updates to `"It is your turn - QueueLess"`, device vibrates (if supported), and chime plays.
+6. **Navigate Around & Global Queue Banner:**
+   - In Customer Window, navigate to `/businesses` or `/my-bookings`.
+   - A persistent **Global Queue Banner** stays at the top of every page displaying `"It is your turn! Ticket #1 called at Apollo Dental Clinic"` with a link back to `/queue`.
+7. **Complete Service & Call Next:**
+   - In Owner Window, click **Complete Service**. Ticket #1 is finished.
+   - Press **N** to call the next customer (Ticket #2 Walk-in Ramesh Kumar).
+8. **View Analytics:**
+   - Run `npm --prefix backend run seed:analytics` to populate historical metrics if needed.
+   - In Owner Window, click the **Analytics** tab. View the daily traffic line chart, 24-hour peak hours, source breakdown donut, and click **Export CSV** to download the report.
 
 ### Frontend Commands
 ```bash

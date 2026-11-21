@@ -20,6 +20,10 @@ export const LoginPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const redirectUrl = searchParams.get('redirect') ? decodeURIComponent(searchParams.get('redirect')!) : '/';
 
+  React.useEffect(() => {
+    document.title = 'Sign In | QueueLess';
+  }, []);
+
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {

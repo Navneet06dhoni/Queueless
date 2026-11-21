@@ -4,6 +4,10 @@ import { Compass, Home } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 
 export const NotFoundPage: React.FC = () => {
+  React.useEffect(() => {
+    document.title = 'Page Not Found | QueueLess';
+  }, []);
+
   return (
     <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center">
       <div className="w-20 h-20 rounded-full bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 flex items-center justify-center mb-6 shadow-soft">

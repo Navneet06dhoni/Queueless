@@ -28,6 +28,10 @@ export const MyBookingsPage: React.FC = () => {
   const toast = useToast();
   const queryClient = useQueryClient();
 
+  React.useEffect(() => {
+    document.title = 'My Bookings | QueueLess';
+  }, []);
+
   // Check-In Mutation
   const checkInMutation = useMutation({
     mutationFn: ({ businessId, appointmentId }: { businessId: string; appointmentId: string }) =>

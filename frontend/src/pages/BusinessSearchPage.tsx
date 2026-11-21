@@ -25,6 +25,10 @@ const CATEGORIES = [
 export const BusinessSearchPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
+  React.useEffect(() => {
+    document.title = 'Find Businesses | QueueLess';
+  }, []);
+
   const qParam = searchParams.get('q') || '';
   const categoryParam = searchParams.get('category') || '';
   const cityParam = searchParams.get('city') || '';

@@ -130,19 +130,30 @@ export const Navbar: React.FC = () => {
                 </>
               )}
 
-              {(user?.role === 'owner' || user?.role === 'admin') && (
-                <Link
-                  to="/owner"
-                  className="px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/60 dark:hover:bg-gray-800 transition-colors"
-                >
-                  Owner Dashboard
-                </Link>
+              {user?.role === 'owner' && (
+                <>
+                  <Link
+                    to="/owner"
+                    className="px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/60 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    Owner Dashboard
+                  </Link>
+                  <Link
+                    to="/owner/manage"
+                    className="px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/60 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    Management
+                  </Link>
+                </>
               )}
 
               {user?.role === 'admin' && (
-                <span className="px-3 py-2 rounded-xl text-sm font-medium text-gray-400 dark:text-gray-500 cursor-not-allowed">
-                  Admin Panel (8c)
-                </span>
+                <Link
+                  to="/admin"
+                  className="px-3 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100/60 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Admin Panel
+                </Link>
               )}
             </div>
           </div>
@@ -371,13 +382,32 @@ export const Navbar: React.FC = () => {
             </>
           )}
 
-          {(user?.role === 'owner' || user?.role === 'admin') && (
+          {user?.role === 'owner' && (
+            <>
+              <Link
+                to="/owner"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2 text-sm font-medium text-gray-800 dark:text-gray-200"
+              >
+                Owner Dashboard
+              </Link>
+              <Link
+                to="/owner/manage"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2 text-sm font-medium text-gray-800 dark:text-gray-200"
+              >
+                Management
+              </Link>
+            </>
+          )}
+
+          {user?.role === 'admin' && (
             <Link
-              to="/owner"
+              to="/admin"
               onClick={() => setMobileMenuOpen(false)}
               className="block py-2 text-sm font-medium text-gray-800 dark:text-gray-200"
             >
-              Owner Dashboard
+              Admin Panel
             </Link>
           )}
 

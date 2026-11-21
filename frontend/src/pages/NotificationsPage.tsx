@@ -21,6 +21,10 @@ export const NotificationsPage: React.FC = () => {
   const toast = useToast();
   const queryClient = useQueryClient();
 
+  React.useEffect(() => {
+    document.title = 'Notifications | QueueLess';
+  }, []);
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['notifications', filterStatus, page],
     queryFn: ({ signal }) =>

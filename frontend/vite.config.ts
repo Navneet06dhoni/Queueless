@@ -11,6 +11,36 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/') || id.includes('node_modules/scheduler/')) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules/react-router') || id.includes('node_modules/@remix-run/router')) {
+            return 'vendor-router';
+          }
+          if (id.includes('node_modules/@tanstack/react-query')) {
+            return 'vendor-query';
+          }
+          if (id.includes('node_modules/socket.io-client') || id.includes('node_modules/engine.io-client')) {
+            return 'vendor-socket';
+          }
+          if (id.includes('node_modules/date-fns') || id.includes('node_modules/date-fns-tz')) {
+            return 'vendor-date';
+          }
+          if (
+            id.includes('node_modules/zod') ||
+            id.includes('node_modules/react-hook-form') ||
+            id.includes('node_modules/@hookform')
+          ) {
+            return 'vendor-forms';
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     host: true,

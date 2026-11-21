@@ -10,6 +10,7 @@ import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { GlobalQueueBanner } from './components/GlobalQueueBanner';
+import { OfflineNotice } from './components/OfflineNotice';
 import { Spinner } from './components/ui/Spinner';
 
 // Pages
@@ -22,12 +23,18 @@ import { MyBookingsPage } from './pages/MyBookingsPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
-// Lazy-loaded pages for bundle optimization (Step 8b)
+// Lazy-loaded pages for bundle optimization (Step 8b & 8c)
 const LiveQueuePage = React.lazy(() =>
   import('./pages/LiveQueuePage').then((m) => ({ default: m.LiveQueuePage }))
 );
 const OwnerDashboardPage = React.lazy(() =>
   import('./pages/owner/OwnerDashboardPage').then((m) => ({ default: m.OwnerDashboardPage }))
+);
+const OwnerManagePage = React.lazy(() =>
+  import('./pages/owner/manage/OwnerManagePage').then((m) => ({ default: m.OwnerManagePage }))
+);
+const AdminPanelPage = React.lazy(() =>
+  import('./pages/admin/AdminPanelPage').then((m) => ({ default: m.AdminPanelPage }))
 );
 
 const PageLoader = () => (
@@ -56,6 +63,7 @@ export const App: React.FC = () => {
                 <BrowserRouter>
                   <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
                     <Navbar />
+                    <OfflineNotice />
                     <GlobalQueueBanner />
                     <main className="flex-1">
                       <Suspense fallback={<PageLoader />}>
@@ -70,9 +78,11 @@ export const App: React.FC = () => {
                           <Route
                             path="/queue"
                             element={
-                              <ProtectedRoute allowedRoles={['customer']}>
-                                <LiveQueuePage />
-                              </ProtectedRoute>
+                              <ErrorBoundary>
+                                <ProtectedRoute allowedRoles={['customer']}>
+                                  <LiveQueuePage />
+                                </ProtectedRoute>
+                              </ErrorBoundary>
                             }
                           />
 
@@ -94,13 +104,37 @@ export const App: React.FC = () => {
                             }
                           />
 
-                          {/* Owner-Only Dashboard (Step 8b) */}
+                          {/* Owner-Only Routes */}
                           <Route
                             path="/owner"
                             element={
-                              <ProtectedRoute allowedRoles={['owner', 'admin']}>
-                                <OwnerDashboardPage />
-                              </ProtectedRoute>
+                              <ErrorBoundary>
+                                <ProtectedRoute allowedRoles={['owner']}>
+                                  <OwnerDashboardPage />
+                                </ProtectedRoute>
+                              </ErrorBoundary>
+                            }
+                          />
+                          <Route
+                            path="/owner/manage"
+                            element={
+                              <ErrorBoundary>
+                                <ProtectedRoute allowedRoles={['owner']}>
+                                  <OwnerManagePage />
+                                </ProtectedRoute>
+                              </ErrorBoundary>
+                            }
+                          />
+
+                          {/* Admin-Only Route */}
+                          <Route
+                            path="/admin"
+                            element={
+                              <ErrorBoundary>
+                                <ProtectedRoute allowedRoles={['admin']}>
+                                  <AdminPanelPage />
+                                </ProtectedRoute>
+                              </ErrorBoundary>
                             }
                           />
 

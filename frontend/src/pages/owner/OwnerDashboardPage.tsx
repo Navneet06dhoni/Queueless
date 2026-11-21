@@ -29,6 +29,10 @@ export const OwnerDashboardPage: React.FC = () => {
     return localStorage.getItem('queueless_owner_selected_business') || null;
   });
 
+  useEffect(() => {
+    document.title = 'Owner Dashboard | QueueLess';
+  }, []);
+
   // Fetch all businesses owned by this user
   const {
     data: businesses,

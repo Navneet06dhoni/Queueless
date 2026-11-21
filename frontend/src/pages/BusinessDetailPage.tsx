@@ -77,6 +77,14 @@ export const BusinessDetailPage: React.FC = () => {
     staleTime: 60000,
   });
 
+  React.useEffect(() => {
+    if (business?.name) {
+      document.title = `${business.name} | QueueLess`;
+    } else {
+      document.title = 'Business Details | QueueLess';
+    }
+  }, [business?.name]);
+
   // Automatically select first service once loaded
   const services = useMemo(() => business?.services || [], [business?.services]);
   const currentService = useMemo(() => {

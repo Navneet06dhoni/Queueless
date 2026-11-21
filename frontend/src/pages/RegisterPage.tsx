@@ -34,6 +34,10 @@ export const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const [serverError, setServerError] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    document.title = 'Sign Up | QueueLess';
+  }, []);
+
   const {
     register,
     handleSubmit,

@@ -73,6 +73,103 @@ export interface BusinessDetail extends IBusiness {
   working_hours: IWorkingHour[];
 }
 
+export interface CreateBusinessInput {
+  name: string;
+  category: string;
+  address: string;
+  city: string;
+  phone: string;
+}
+
+export interface CreateServiceInput {
+  name: string;
+  duration_minutes: number;
+  price: number;
+}
+
+export interface WorkingHourInput {
+  day_of_week: number;
+  open_time: string;
+  close_time: string;
+}
+
+export interface GenerateSlotsInput {
+  service_id: string;
+  from_date: string;
+  to_date: string;
+}
+
+export interface GenerateSlotsResponse {
+  created: number;
+  skipped: number;
+}
+
+export interface AdminStats {
+  users: {
+    customer: number;
+    owner: number;
+    admin: number;
+    total: number;
+  };
+  businesses: {
+    pending: number;
+    approved: number;
+    rejected: number;
+    total: number;
+  };
+  appointments: {
+    confirmed: number;
+    completed: number;
+    no_show: number;
+    cancelled: number;
+    total30Days: number;
+  };
+  queueServed30Days: number;
+  failedEmails: number;
+  daily: Array<{
+    date: string;
+    newUsers: number;
+    newAppointments: number;
+  }>;
+}
+
+export interface AdminUserListItem {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  is_blocked: boolean;
+  blocked_at: string | null;
+  blocked_reason: string | null;
+  created_at: string;
+}
+
+export interface AdminAuditLogItem {
+  id: string;
+  admin_id: string;
+  admin_name: string | null;
+  admin_email: string | null;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  details: any;
+  created_at: string;
+}
+
+export interface AdminFailedNotificationItem {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  user_email?: string;
+  type: string;
+  title: string;
+  message: string;
+  email_status: string;
+  email_attempts: number;
+  last_error: string | null;
+  created_at: string;
+}
+
 export interface PaginatedResult<T> {
   data: T[];
   page: number;

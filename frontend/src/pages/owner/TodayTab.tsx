@@ -30,11 +30,14 @@ export const TodayTab: React.FC<TodayTabProps> = ({ businessId }) => {
 
   const todayStr = formatDate(new Date(), 'yyyy-MM-dd');
 
-  // Confirmation modal state
+  // Confirmation modal state for complete / no-show
   const [actionTarget, setActionTarget] = useState<{
     appointment: AppointmentDetail;
     newStatus: 'completed' | 'no_show';
   } | null>(null);
+
+  // Cancellation modal state for owner cancel
+  const [cancelTarget, setCancelTarget] = useState<AppointmentDetail | null>(null);
 
   // 1. Fetch today's business appointments
   const {
@@ -66,6 +69,21 @@ export const TodayTab: React.FC<TodayTabProps> = ({ businessId }) => {
     },
     onError: (err: any) => {
       const msg = err.response?.data?.error?.message || 'Could not update status';
+      toast.error(msg);
+    },
+  });
+
+  // Owner cancellation mutation
+  const cancelMutation = useMutation({
+    mutationFn: (id: string) => bookingApi.cancelAppointment(id),
+    onSuccess: (data) => {
+      setCancelTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['business-appointments', businessId] });
+      queryClient.invalidateQueries({ queryKey: ['analytics', 'today', businessId] });
+      toast.success(data.message || 'Appointment cancelled successfully');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.error?.message || 'Could not cancel appointment';
       toast.error(msg);
     },
   });
@@ -184,9 +202,9 @@ export const TodayTab: React.FC<TodayTabProps> = ({ businessId }) => {
                     </div>
                   </div>
 
-                  {/* Actions for Confirmed appointments that have already started */}
+                  {/* Actions for Confirmed appointments */}
                   {isConfirmed && (
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
                       {hasStarted ? (
                         <>
                           <Button
@@ -216,6 +234,16 @@ export const TodayTab: React.FC<TodayTabProps> = ({ businessId }) => {
                           Starts at {formatTime(appt.slot.start_time)}
                         </span>
                       )}
+
+                      {/* Owner may cancel appointment at any time */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 dark:border-red-900/60"
+                        onClick={() => setCancelTarget(appt)}
+                      >
+                        Cancel
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -267,6 +295,40 @@ export const TodayTab: React.FC<TodayTabProps> = ({ businessId }) => {
           {actionTarget?.newStatus === 'completed'
             ? 'This will record the appointment as successfully delivered.'
             : 'This will record the customer as absent, updating your no-show analytics.'}
+        </p>
+      </Modal>
+      {/* Cancel Appointment Confirmation Modal */}
+      <Modal
+        isOpen={!!cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        title="Cancel Appointment?"
+        description={`Customer: ${cancelTarget?.customer?.name || 'Customer'} • Slot: ${cancelTarget ? formatTime(cancelTarget.slot.start_time) : ''} IST`}
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCancelTarget(null)}
+            >
+              Keep Appointment
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              isLoading={cancelMutation.isPending}
+              onClick={() => {
+                if (cancelTarget) {
+                  cancelMutation.mutate(cancelTarget.id);
+                }
+              }}
+            >
+              Confirm Cancellation
+            </Button>
+          </>
+        }
+      >
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Cancelling will free up this slot and notify the customer immediately via in-app notification and email.
         </p>
       </Modal>
     </div>

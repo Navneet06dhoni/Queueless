@@ -8,6 +8,10 @@ export const LandingPage: React.FC = () => {
   const [city, setCity] = useState('');
   const navigate = useNavigate();
 
+  React.useEffect(() => {
+    document.title = 'QueueLess — Smart Virtual Queue & Booking';
+  }, []);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const params = new URLSearchParams();

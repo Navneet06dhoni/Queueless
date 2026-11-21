@@ -19,6 +19,17 @@ import {
   OwnerQueueDetails,
   BusinessSummaryAnalytics,
   BusinessTodayAnalytics,
+  CreateBusinessInput,
+  CreateServiceInput,
+  IService,
+  WorkingHourInput,
+  IWorkingHour,
+  GenerateSlotsInput,
+  GenerateSlotsResponse,
+  AdminStats,
+  AdminUserListItem,
+  AdminAuditLogItem,
+  AdminFailedNotificationItem,
 } from './types';
 
 export * from './types';
@@ -90,6 +101,55 @@ export const businessApi = {
       }
     );
     return res.data.appointments;
+  },
+  createBusiness: async (data: CreateBusinessInput): Promise<IBusiness> => {
+    const res = await api.post<{ business: IBusiness }>('/businesses', data);
+    return res.data.business;
+  },
+  updateBusiness: async (id: string, data: Partial<CreateBusinessInput>): Promise<IBusiness> => {
+    const res = await api.put<{ business: IBusiness }>(`/businesses/${id}`, data);
+    return res.data.business;
+  },
+  addService: async (businessId: string, data: CreateServiceInput): Promise<IService> => {
+    const res = await api.post<{ service: IService }>(`/businesses/${businessId}/services`, data);
+    return res.data.service;
+  },
+  updateService: async (
+    businessId: string,
+    serviceId: string,
+    data: Partial<CreateServiceInput>
+  ): Promise<IService> => {
+    const res = await api.put<{ service: IService }>(
+      `/businesses/${businessId}/services/${serviceId}`,
+      data
+    );
+    return res.data.service;
+  },
+  deleteService: async (businessId: string, serviceId: string): Promise<{ message: string }> => {
+    const res = await api.delete<{ message: string }>(
+      `/businesses/${businessId}/services/${serviceId}`
+    );
+    return res.data;
+  },
+  setWorkingHours: async (
+    businessId: string,
+    workingHours: WorkingHourInput[]
+  ): Promise<IWorkingHour[]> => {
+    const res = await api.put<{ working_hours: IWorkingHour[] }>(
+      `/businesses/${businessId}/working-hours`,
+      workingHours
+    );
+    return res.data.working_hours;
+  },
+  generateSlots: async (
+    businessId: string,
+    data: GenerateSlotsInput
+  ): Promise<GenerateSlotsResponse> => {
+    const res = await api.post<GenerateSlotsResponse>(
+      `/businesses/${businessId}/slots/generate`,
+      data
+    );
+    return res.data;
   },
 };
 
@@ -275,6 +335,85 @@ export const notificationApi = {
     const res = await api.post<{ success: boolean; count: number; message: string }>(
       '/notifications/read-all'
     );
+    return res.data;
+  },
+};
+
+export const adminApi = {
+  getStats: async (signal?: AbortSignal): Promise<AdminStats> => {
+    const res = await api.get<AdminStats>('/admin/stats', { signal });
+    return res.data;
+  },
+  listUsers: async (
+    params: {
+      role?: string;
+      q?: string;
+      blocked?: boolean;
+      page?: number;
+      limit?: number;
+    } = {},
+    signal?: AbortSignal
+  ): Promise<{ data: AdminUserListItem[]; total: number; page: number; limit: number }> => {
+    const res = await api.get<{
+      data: AdminUserListItem[];
+      total: number;
+      page: number;
+      limit: number;
+    }>('/admin/users', { params, signal });
+    return res.data;
+  },
+  blockUser: async (
+    userId: string,
+    data: { blocked: boolean; reason?: string }
+  ): Promise<{ message: string; user: AdminUserListItem }> => {
+    const res = await api.patch<{ message: string; user: AdminUserListItem }>(
+      `/admin/users/${userId}/block`,
+      data
+    );
+    return res.data;
+  },
+  listAuditLogs: async (
+    params: { page?: number; limit?: number } = {},
+    signal?: AbortSignal
+  ): Promise<{ data: AdminAuditLogItem[]; total: number; page: number; limit: number }> => {
+    const res = await api.get<{
+      data: AdminAuditLogItem[];
+      total: number;
+      page: number;
+      limit: number;
+    }>('/admin/audit-log', { params, signal });
+    return res.data;
+  },
+  listBusinesses: async (
+    params: { status?: string; page?: number; limit?: number } = {},
+    signal?: AbortSignal
+  ): Promise<PaginatedResult<IBusiness>> => {
+    const res = await api.get<PaginatedResult<IBusiness>>('/admin/businesses', { params, signal });
+    return res.data;
+  },
+  updateBusinessStatus: async (
+    businessId: string,
+    status: 'approved' | 'rejected'
+  ): Promise<IBusiness> => {
+    const res = await api.patch<{ business: IBusiness }>(
+      `/admin/businesses/${businessId}/status`,
+      { status }
+    );
+    return res.data.business;
+  },
+  getFailedNotifications: async (
+    params: { page?: number; limit?: number } = {},
+    signal?: AbortSignal
+  ): Promise<{ data: AdminFailedNotificationItem[]; total: number; page: number; limit: number }> => {
+    const res = await api.get<{
+      data: AdminFailedNotificationItem[];
+      total: number;
+      page: number;
+      limit: number;
+    }>('/admin/notifications', {
+      params: { ...params, status: 'failed' },
+      signal,
+    });
     return res.data;
   },
 };

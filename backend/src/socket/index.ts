@@ -30,6 +30,9 @@ export const initSocketServer = (httpServer: http.Server): Server => {
     transports: ['websocket', 'polling'],
   });
 
+  // Initialize socket consumer for notification.created
+  initSocketSubscriptions().catch(() => {});
+
   // Attempt Redis adapter for multi-instance scaling
   try {
     pubClient = new Redis({
@@ -195,6 +198,8 @@ export const emitQueueUpdated = (businessId: string, data: PublicQueueStatus): v
   }
 };
 
+
+
 export const emitQueuePosition = (userId: string, data: CustomerQueuePosition): void => {
   if (io) {
     io.to(`user:${userId}`).emit('queue:position', data);
@@ -237,3 +242,55 @@ export const emitNotificationNew = (
     });
   }
 };
+
+export const initSocketSubscriptions = async (): Promise<void> => {
+  const { events } = await import('../events');
+  const { rabbitMQClient, EXCHANGES } = await import('../events/rabbitmq');
+
+  // In-process event subscription
+  events.subscribe('notification.created', (envelope: any) => {
+    const data = envelope.data || envelope;
+    if (data?.userId) {
+      emitNotificationNew(data.userId, {
+        id: data.notificationId || envelope.eventId,
+        type: data.type,
+        title: data.title,
+        message: data.message,
+        data: data.data,
+        createdAt: data.createdAt || envelope.occurredAt || new Date().toISOString(),
+      });
+    }
+  });
+
+  // RabbitMQ consumer for socket.q
+  if (config.EVENT_TRANSPORT === 'rabbitmq') {
+    rabbitMQClient.onConnect(async () => {
+      const ch = await rabbitMQClient.getChannel();
+      if (!ch) return;
+
+      const queueName = 'socket.q';
+      await ch.assertQueue(queueName, { durable: true });
+      await ch.bindQueue(queueName, EXCHANGES.EVENTS, 'notification.created');
+
+      await rabbitMQClient.startConsumer(
+        queueName,
+        'monolith_socket_consumer',
+        async (envelope: any) => {
+          const data = envelope.data || envelope;
+          if (data?.userId) {
+            emitNotificationNew(data.userId, {
+              id: data.notificationId || envelope.eventId,
+              type: data.type,
+              title: data.title,
+              message: data.message,
+              data: data.data,
+              createdAt: data.createdAt || envelope.occurredAt || new Date().toISOString(),
+            });
+          }
+        }
+      );
+    });
+  }
+};
+
+

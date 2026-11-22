@@ -23,8 +23,16 @@
     "migrate:down": "npm --prefix backend run migrate:down",
     "seed": "npm --prefix backend run seed",
     "test:backend": "npm --prefix backend run test",
+    "db:create-service-dbs": "tsx scripts/create-service-dbs.ts",
+    "migrate:notification": "npm --prefix services/notification-service run migrate",
+    "copy:notifications": "tsx scripts/copy-notifications.ts",
+    "up:services": "docker compose up -d notification-service gateway",
+    "down:services": "docker compose stop notification-service",
+    "e2e:notification": "tsx scripts/e2e-notification.ts",
+    "demo:notification-outage": "tsx scripts/demo-notification-outage.ts",
     "gateway:lint": "docker compose exec -T gateway nginx -t",
     "test:gateway": "tsx scripts/gateway-smoke.ts",
+    "test:services": "npm --prefix services/notification-service test",
     "verify": "npm --prefix backend run docs:export && npm --prefix backend test && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix backend run build && npm --prefix frontend run build"
   },
   "keywords": [

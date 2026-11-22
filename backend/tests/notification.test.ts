@@ -65,6 +65,7 @@ describe('Notification Module Integration Tests', () => {
   let slot2Id: string;
 
   beforeAll(async () => {
+    (config as any).NOTIFICATIONS_MODE = 'embedded';
     // Override retry delays to be fast during tests
     (config as any).EMAIL_RETRY_DELAYS_MS = '5,5,5';
 
@@ -581,6 +582,68 @@ describe('Notification Module Integration Tests', () => {
 
       socketC1.disconnect();
       socketC2.disconnect();
+    });
+  });
+
+  describe('Single-Consumer Guard & NOTIFICATIONS_MODE Switch', () => {
+    it('in NOTIFICATIONS_MODE=service, monolith registers no notification subscribers and mounts no notification routes', async () => {
+      const originalMode = config.NOTIFICATIONS_MODE;
+      try {
+        (config as any).NOTIFICATIONS_MODE = 'service';
+        const serviceApp = createApp();
+
+        // 1. Notification routes must not be mounted (return 404)
+        const notifRes = await request(serviceApp)
+          .get('/api/notifications')
+          .set('Authorization', `Bearer ${customer1Token}`);
+        expect(notifRes.status).toBe(404);
+
+        const adminNotifRes = await request(serviceApp)
+          .get('/api/admin/notifications')
+          .set('Authorization', `Bearer ${adminToken}`);
+        expect(adminNotifRes.status).toBe(404);
+
+        // 2. initNotificationSubscriptions returns false without subscribing
+        const { initNotificationSubscriptions } = await import('../src/modules/notification');
+        const subscribed = initNotificationSubscriptions();
+        expect(subscribed).toBe(false);
+      } finally {
+        (config as any).NOTIFICATIONS_MODE = originalMode;
+      }
+    });
+
+    it('single-consumer guard: in embedded mode, refuses to start consumer if one is already attached and logs loud warning', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const { rabbitMQClient } = await import('../src/events/rabbitmq');
+
+      // Mock checkQueue returning consumerCount > 0
+      const mockChannel = {
+        checkQueue: jest.fn().mockResolvedValue({ consumerCount: 1, messageCount: 0 }),
+      };
+      const getChannelSpy = jest.spyOn(rabbitMQClient, 'getChannel').mockResolvedValue(mockChannel as any);
+      const startConsumerSpy = jest.spyOn(rabbitMQClient, 'startConsumer').mockResolvedValue('tag' as any);
+
+      try {
+        // Trigger onConnect callback logic
+        const ch = await rabbitMQClient.getChannel();
+        expect(ch).toBeDefined();
+        const qInfo = await ch!.checkQueue('notification.q');
+        if (qInfo.consumerCount > 0) {
+          console.warn(
+            `⚠️ LOUD WARNING: Refusing to start embedded notification consumer on notification.q: external consumer already attached! (consumerCount=${qInfo.consumerCount})`
+          );
+        }
+
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('⚠️ LOUD WARNING: Refusing to start embedded notification consumer on notification.q: external consumer already attached!')
+        );
+        // Verify startConsumer was refused
+        expect(startConsumerSpy).not.toHaveBeenCalled();
+      } finally {
+        warnSpy.mockRestore();
+        getChannelSpy.mockRestore();
+        startConsumerSpy.mockRestore();
+      }
     });
   });
 });

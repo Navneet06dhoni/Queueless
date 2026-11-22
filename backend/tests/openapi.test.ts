@@ -1,5 +1,6 @@
 import { createApp } from '../src/app';
 import { generateOpenApiSpec } from '../src/docs/openapi';
+import { config } from '../src/config';
 
 interface RouteEntry {
   method: string;
@@ -93,9 +94,20 @@ describe('OpenAPI Contract Test', () => {
     }
 
     // 2. Check for documented OpenAPI routes missing from Express
+    const notificationServiceRoutes = new Set([
+      'GET /api/notifications',
+      'POST /api/notifications/read-all',
+      'PATCH /api/notifications/:id/read',
+      'GET /api/admin/notifications',
+    ]);
+
     const missingInExpress: string[] = [];
     for (const route of openApiRouteSet) {
       if (!expressRouteSet.has(route)) {
+        if (config.NOTIFICATIONS_MODE === 'service' && notificationServiceRoutes.has(route)) {
+          // Handled by services/notification-service in service mode
+          continue;
+        }
         missingInExpress.push(route);
       }
     }

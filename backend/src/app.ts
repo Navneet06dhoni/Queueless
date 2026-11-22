@@ -140,11 +140,13 @@ export const createApp = (): Express => {
   // Mount Module Routes
   app.use(`${config.API_PREFIX}/auth`, authRoutes);
   app.use(`${config.API_PREFIX}/businesses`, businessRoutes);
-  app.use(`${config.API_PREFIX}/admin/notifications`, adminNotificationRoutes);
+  if (config.NOTIFICATIONS_MODE === 'embedded') {
+    app.use(`${config.API_PREFIX}/admin/notifications`, adminNotificationRoutes);
+    app.use(`${config.API_PREFIX}/notifications`, notificationRoutes);
+  }
   app.use(`${config.API_PREFIX}/admin`, adminRoutes);
   app.use(`${config.API_PREFIX}/appointments`, appointmentRoutes);
   app.use(`${config.API_PREFIX}/queue`, queueRoutes);
-  app.use(`${config.API_PREFIX}/notifications`, notificationRoutes);
   app.use(`${config.API_PREFIX}/analytics`, analyticsRoutes);
 
   // 404 Handler

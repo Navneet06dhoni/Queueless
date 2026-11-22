@@ -5,6 +5,10 @@ import { tickOutboxRelay } from '../src/events/outboxRelay';
 import { notificationService } from '../src/modules/notification/notification.service';
 
 describe('Transactional Outbox Pattern & Atomicity', () => {
+  beforeAll(() => {
+    events.setTransport('inprocess');
+  });
+
   beforeEach(async () => {
     await query(`DELETE FROM notifications`);
     await query(`DELETE FROM outbox_events`);

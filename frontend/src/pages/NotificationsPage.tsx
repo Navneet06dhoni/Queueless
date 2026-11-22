@@ -25,7 +25,7 @@ export const NotificationsPage: React.FC = () => {
     document.title = 'Notifications | QueueLess';
   }, []);
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['notifications', filterStatus, page],
     queryFn: ({ signal }) =>
       notificationApi.getNotifications({ status: filterStatus, page, limit: 10 }, signal),
@@ -137,11 +137,22 @@ export const NotificationsPage: React.FC = () => {
           ))}
         </div>
       ) : isError ? (
-        <ErrorState
-          title="Could not load notifications"
-          message="An error occurred while fetching your notifications. Please try again."
-          onRetry={() => refetch()}
-        />
+        ((error as any)?.response?.status === 502 ||
+        (error as any)?.response?.status === 503 ||
+        (error as any)?.status === 502 ||
+        (error as any)?.status === 503) ? (
+          <ErrorState
+            title="Notifications are temporarily unavailable"
+            message="We are currently experiencing issues with our notification service. Please check back shortly."
+            onRetry={() => refetch()}
+          />
+        ) : (
+          <ErrorState
+            title="Could not load notifications"
+            message="An error occurred while fetching your notifications. Please try again."
+            onRetry={() => refetch()}
+          />
+        )
       ) : notifications.length === 0 ? (
         <EmptyState
           icon={<Bell className="w-8 h-8" />}

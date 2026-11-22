@@ -10,6 +10,7 @@ import { SlotsManageTab } from '../pages/owner/manage/SlotsManageTab';
 import { TodayTab } from '../pages/owner/TodayTab';
 import { businessApi, bookingApi, analyticsApi } from '../api';
 import { ToastProvider } from '../components/ui/Toast';
+import { formatDate } from '../utils/date';
 
 describe('Step 8c Owner Management Tests', () => {
   let queryClient: QueryClient;
@@ -305,7 +306,7 @@ describe('Step 8c Owner Management Tests', () => {
     const toDateInput = screen.getByLabelText(/To Date \(max 30 days\)/i) as HTMLInputElement;
 
     // Past date disabled via min attribute
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatDate(new Date(), 'yyyy-MM-dd');
     expect(fromDateInput.min).toBe(today);
 
     // Range > 30 days

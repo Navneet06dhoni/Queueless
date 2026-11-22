@@ -5137,310 +5137,70 @@
     },
     "/api/notifications": {
       "get": {
+        "summary": "Get user notifications",
         "tags": [
           "Notifications"
         ],
-        "summary": "List in-app notifications for authenticated user",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "number",
-              "nullable": true,
-              "default": 1
-            },
-            "required": false,
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "number",
-              "nullable": true,
-              "default": 20
-            },
-            "required": false,
-            "name": "limit",
-            "in": "query"
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Paginated user notifications and unread count",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "notifications": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "user_id": {
-                            "type": "string",
-                            "format": "uuid"
-                          },
-                          "type": {
-                            "type": "string",
-                            "example": "booking.confirmed"
-                          },
-                          "title": {
-                            "type": "string",
-                            "example": "Appointment Confirmed"
-                          },
-                          "message": {
-                            "type": "string",
-                            "example": "Your booking at Apollo Dental Clinic is confirmed for tomorrow."
-                          },
-                          "data": {
-                            "nullable": true
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": [
-                              "unread",
-                              "read"
-                            ]
-                          },
-                          "created_at": {
-                            "type": "string",
-                            "format": "date-time"
-                          }
-                        },
-                        "required": [
-                          "id",
-                          "user_id",
-                          "type",
-                          "title",
-                          "message",
-                          "status",
-                          "created_at"
-                        ]
-                      }
-                    },
-                    "total": {
-                      "type": "integer"
-                    },
-                    "unreadCount": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "notifications",
-                    "total",
-                    "unreadCount"
-                  ]
-                }
-              }
-            }
+            "description": "List of notifications"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           }
         }
       }
     },
     "/api/notifications/read-all": {
       "post": {
+        "summary": "Mark all notifications as read",
         "tags": [
           "Notifications"
         ],
-        "summary": "Mark all unread notifications as read",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "responses": {
           "200": {
-            "description": "All notifications marked as read",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "updated": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "updated"
-                  ]
-                }
-              }
-            }
+            "description": "All marked as read"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           }
         }
       }
     },
     "/api/notifications/{id}/read": {
       "patch": {
+        "summary": "Mark single notification as read",
         "tags": [
           "Notifications"
         ],
-        "summary": "Mark a single notification as read",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Notification marked as read",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "success"
-                  ]
-                }
-              }
-            }
+            "description": "Notification marked as read"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Notification not found"
           }
         }
       }
     },
     "/api/admin/notifications": {
       "get": {
+        "summary": "Get failed email deliveries (Admin only)",
         "tags": [
-          "Admin"
-        ],
-        "summary": "List failed email notifications (Admin only)",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "number",
-              "nullable": true,
-              "default": 1
-            },
-            "required": false,
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "number",
-              "nullable": true,
-              "default": 20
-            },
-            "required": false,
-            "name": "limit",
-            "in": "query"
-          }
+          "Notifications Admin"
         ],
         "responses": {
           "200": {
-            "description": "List of failed email notifications with error details",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "failedNotifications": {
-                      "type": "array",
-                      "items": {
-                        "nullable": true
-                      }
-                    },
-                    "total": {
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "failedNotifications",
-                    "total"
-                  ]
-                }
-              }
-            }
+            "description": "List of failed email deliveries"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Forbidden"
           }
         }
       }

@@ -5,7 +5,7 @@ import {
 } from '@queueless/messaging';
 import { config } from '../config';
 import { outboxRepository } from './outbox.repository';
-import { setLocalEmitterCallback, tickOutboxRelay } from './outboxRelay';
+import { setLocalEmitterCallback, setRelayTransport, tickOutboxRelay } from './outboxRelay';
 
 export { EventEnvelope, IEventBus };
 
@@ -20,6 +20,11 @@ export class EventBus extends BaseEventBus {
     setLocalEmitterCallback((name: string, payload: any) => {
       this.emitDirect(name, payload);
     });
+  }
+
+  public override setTransport(transport: 'inprocess' | 'rabbitmq'): void {
+    super.setTransport(transport);
+    setRelayTransport(transport);
   }
 }
 

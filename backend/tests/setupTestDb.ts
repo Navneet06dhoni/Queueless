@@ -33,6 +33,7 @@ export const setupTestDb = async (): Promise<TestDbInstance> => {
   });
 
   setPool(testPool);
+  events.setTransport('inprocess');
 
   const resetData = async () => {
     // Wait for in-flight async events to complete before wiping tables

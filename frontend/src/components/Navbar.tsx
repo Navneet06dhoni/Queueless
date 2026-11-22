@@ -49,12 +49,30 @@ export const Navbar: React.FC = () => {
   }, []);
 
   // Fetch recent notifications for authenticated users
-  const { data: notifData } = useQuery({
+  const { data: notifData, isError, error } = useQuery({
     queryKey: ['notifications', 'recent'],
     queryFn: () => notificationApi.getNotifications({ limit: 5 }),
     enabled: !!user,
     staleTime: 30000,
   });
+
+  const isUnavailable =
+    isError &&
+    ((error as any)?.response?.status === 502 ||
+      (error as any)?.response?.status === 503 ||
+      (error as any)?.status === 502 ||
+      (error as any)?.status === 503);
+
+  const lastToastTimeRef = useRef<number>(0);
+  useEffect(() => {
+    if (isUnavailable) {
+      const now = Date.now();
+      if (now - lastToastTimeRef.current >= 60000) {
+        lastToastTimeRef.current = now;
+        toast.error('Notifications are temporarily unavailable');
+      }
+    }
+  }, [isUnavailable, toast]);
 
   const markAllMutation = useMutation({
     mutationFn: () => notificationApi.markAllAsRead(),
@@ -87,7 +105,7 @@ export const Navbar: React.FC = () => {
     };
   }, [socket, user, queryClient, toast]);
 
-  const unreadCount = notifData?.unreadCount || 0;
+  const unreadCount = (!isUnavailable && notifData?.unreadCount) ? notifData.unreadCount : 0;
 
   return (
     <nav className="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
@@ -215,7 +233,14 @@ export const Navbar: React.FC = () => {
                     </div>
 
                     <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800/60">
-                      {(!notifData?.data || notifData.data.length === 0) ? (
+                      {isUnavailable ? (
+                        <div
+                          className="p-6 text-center text-xs text-amber-600 dark:text-amber-400"
+                          data-testid="notifications-unavailable"
+                        >
+                          Notifications are temporarily unavailable
+                        </div>
+                      ) : (!notifData?.data || notifData.data.length === 0) ? (
                         <div className="p-6 text-center text-xs text-gray-400">
                           No notifications yet
                         </div>

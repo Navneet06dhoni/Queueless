@@ -29,7 +29,7 @@ export const requestIdMiddleware = (req: Request, res: Response, next: NextFunct
   req.id = requestId;
 
   // Request-scoped child logger
-  req.log = logger.child({ requestId });
+  (req as any).log = logger.child({ requestId });
 
   next();
 };

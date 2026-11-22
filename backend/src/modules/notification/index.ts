@@ -37,8 +37,13 @@ export const startNotificationRabbitMQConsumer = async (): Promise<void> => {
   );
 };
 
-export const initNotificationSubscriptions = (): void => {
-  if (subscribed) return;
+export const initNotificationSubscriptions = (): boolean => {
+  if (config.NOTIFICATIONS_MODE !== 'embedded') {
+    // In service mode, notification-service consumes notification.q and monolith does not subscribe
+    return false;
+  }
+
+  if (subscribed) return true;
   subscribed = true;
 
   // In-process event subscriptions
@@ -74,10 +79,27 @@ export const initNotificationSubscriptions = (): void => {
     notificationService.handleQueueAdvanced(envelope)
   );
 
-  // RabbitMQ consumer setup
+  // RabbitMQ consumer setup with Single-Consumer Guard
   if (config.EVENT_TRANSPORT === 'rabbitmq') {
     rabbitMQClient.onConnect(async () => {
+      try {
+        const ch = await rabbitMQClient.getChannel();
+        if (ch) {
+          const qInfo = await ch.checkQueue(QUEUES.NOTIFICATION);
+          if (qInfo.consumerCount > 0) {
+            console.warn(
+              `⚠️ LOUD WARNING: Refusing to start embedded notification consumer on notification.q: external consumer already attached! (consumerCount=${qInfo.consumerCount})`
+            );
+            return; // REFUSE TO START CONSUMER
+          }
+        }
+      } catch {
+        // Queue may not exist yet
+      }
+
       await startNotificationRabbitMQConsumer();
     });
   }
+
+  return true;
 };

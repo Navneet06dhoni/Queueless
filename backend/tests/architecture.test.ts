@@ -225,4 +225,52 @@ describe('Architecture & Module Boundary Tests', () => {
       expect(tableViolations).toEqual([]);
     });
   });
+
+  describe('Notification Service Architecture Boundaries', () => {
+    const servicesDir = path.resolve(rootDir, 'services');
+    const notifServiceSrc = path.resolve(servicesDir, 'notification-service/src');
+    const backendSrc = path.resolve(rootDir, 'backend/src');
+
+    test('notification-service must never import anything from backend/', () => {
+      const notifFiles = getTsFiles(notifServiceSrc);
+      const violations: string[] = [];
+      const backendImportRegex = /(?:from\s+['"][^'"]*backend[/\\]|require\s*\(\s*['"][^'"]*backend[/\\])/;
+
+      for (const file of notifFiles) {
+        const content = fs.readFileSync(file, 'utf-8');
+        const lines = content.split('\n');
+
+        lines.forEach((line, lineNum) => {
+          if (backendImportRegex.test(line)) {
+            violations.push(
+              `${path.relative(rootDir, file)}:${lineNum + 1} imports forbidden backend: "${line.trim()}"`
+            );
+          }
+        });
+      }
+
+      expect(violations).toEqual([]);
+    });
+
+    test('backend/src must never import anything from services/', () => {
+      const backendFiles = getTsFiles(backendSrc);
+      const violations: string[] = [];
+      const serviceImportRegex = /(?:from\s+['"][^'"]*services[/\\]|require\s*\(\s*['"][^'"]*services[/\\])/;
+
+      for (const file of backendFiles) {
+        const content = fs.readFileSync(file, 'utf-8');
+        const lines = content.split('\n');
+
+        lines.forEach((line, lineNum) => {
+          if (serviceImportRegex.test(line)) {
+            violations.push(
+              `${path.relative(rootDir, file)}:${lineNum + 1} imports forbidden services: "${line.trim()}"`
+            );
+          }
+        });
+      }
+
+      expect(violations).toEqual([]);
+    });
+  });
 });

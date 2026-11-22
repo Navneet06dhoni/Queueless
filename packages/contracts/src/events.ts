@@ -173,8 +173,19 @@ export const UserBlockedEventSchema = BaseEventSchema.extend({
 });
 export type UserBlockedEvent = z.infer<typeof UserBlockedEventSchema>;
 
+export const NotificationCreatedEventSchema = BaseEventSchema.extend({
+  notificationId: z.string().uuid(),
+  userId: z.string().uuid(),
+  type: z.string(),
+  title: z.string(),
+  message: z.string(),
+  data: z.record(z.any()).optional().default({}),
+  createdAt: TimestampSchema.optional(),
+});
+export type NotificationCreatedEvent = z.infer<typeof NotificationCreatedEventSchema>;
+
 /**
- * Registry of all 9 core domain event contracts with versioned Zod schemas.
+ * Registry of all 10 core domain event contracts with versioned Zod schemas.
  */
 export const EventContracts = {
   'booking.confirmed': BookingConfirmedEventSchema,
@@ -186,6 +197,7 @@ export const EventContracts = {
   'queue.advanced': QueueAdvancedEventSchema,
   'appointment.reminder_due': AppointmentReminderDueEventSchema,
   'user.blocked': UserBlockedEventSchema,
+  'notification.created': NotificationCreatedEventSchema,
 } as const;
 
 export type EventContractType = keyof typeof EventContracts;

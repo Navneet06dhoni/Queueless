@@ -169,8 +169,15 @@ Clients / Browser (Frontend)
 │  - Trust Boundary: Strip incoming X-User-Id, X-User-Role    │
 │  - Rate Limiting: auth_limit (5r/m), api_limit (20r/s)      │
 │  - Payload Cap: client_max_body_size 100k                   │
-│  - Custom JSON error pages: 401, 413, 429, 502, 503, 504    │
-│  - WebSocket: Upgrade headers & 86400s timeout on /socket.io│
+│  - Custom JSON error pages:                                          │
+│    * 401: UNAUTHORIZED                                               │
+│    * 413: PAYLOAD_TOO_LARGE                                          │
+│    * 429: RATE_LIMITED                                               │
+│    * 502/503: UPSTREAM_UNAVAILABLE                                   │
+│    * 504: UPSTREAM_TIMEOUT                                           │
+│    * /internal/* (direct access): 404 NOT_FOUND                      │
+│    All error pages strictly conform to {error:{code,message,requestId}}│
+│  - WebSocket: Upgrade headers & 86400s timeout on /socket.io         │
 │  - Canary Auth: auth_request on /api/auth/me                │
 └──────────────────────┬──────────────────────────────────────┘
                        │ Upstream ($BACKEND_UPSTREAM)
@@ -195,4 +202,79 @@ For the canary route `/api/auth/me`, Nginx delegates verification to `/internal/
 1. **Immediate Revocation Guarantee:** If a user logs out, their refresh/access tokens are blacklisted, or their account is suspended (`user.blocked`), caching the auth verification at the gateway level would permit unauthorized access until the cache TTL expired.
 2. **Immediate Role & Permission Updates:** Role changes (e.g., customer promoted to owner, or owner blocked by admin) must take effect on the very next HTTP request.
 3. **No Distributed Invalidation Bus Yet:** Properly caching authenticated sessions at edge proxies requires a low-latency cache eviction channel (such as Redis pub/sub or an invalidation topic). In Phase 10b, auth verification queries the fast in-memory Redis token blacklist and stateless JWT validation, achieving sub-millisecond verification overhead without cache staleness risks.
+
+---
+
+### 4. Notification Microservice Decomposition (Phase 10c)
+
+Phase 10c cleanly extracts the notification domain into an autonomous microservice (`services/notification-service`):
+
+```
+                   ┌────────────────────────────────────────┐
+                   │          Nginx Gateway (:8080)         │
+                   │  (Strip incoming X-Internal-Token)     │
+                   └──────┬──────────────────────────┬──────┘
+                          │                          │
+                          │ /api/notifications       │ All other
+                          │ + auth_request           │ routes
+                          │ + X-Internal-Token       │
+                          ▼                          ▼
+               ┌─────────────────────┐    ┌─────────────────────┐
+               │notification-service │    │ QueueLess Monolith  │
+               │  (Port 3004 internal│    │  (Port 5000)        │
+               │   Docker net only)  │    └──────────┬──────────┘
+               └──────────┬──────────┘               │
+                          │                          │ publishes events
+                          ▼                          ▼
+                   [notification_db]           [queueless DB]
+                   [PostgreSQL role:           [PostgreSQL role:
+                    notification_user]          postgres]
+                          ▲                          │
+                          │                          ▼
+                          └────────[ RabbitMQ ]◄─────┘
+                              (notification.q: events)
+                              (socket.q: notification.created)
+```
+
+#### 1. Data Ownership
+- **Database:** Independent PostgreSQL database `notification_db` (test: `notification_test`).
+- **Least-Privilege User:** `notification_user` owns `notifications`, `outbox_events`, `processed_events`. Permissions on `queueless` and `queueless_test` are explicitly revoked.
+- **Migration & Copy Scripts:**
+  - `npm run migrate:notification`: runs service migrations in `services/notification-service/migrations`.
+  - `npm run copy:notifications`: idempotent backfill copying legacy notifications from monolith `queueless` to `notification_db` using `ON CONFLICT (id) DO NOTHING`.
+
+#### 2. Event Consumption & Publication
+- **Consumed Events (`notification.q`):**
+  - `booking.confirmed`, `booking.cancelled`, `booking.rescheduled`
+  - `business.status_changed`
+  - `queue.advanced`
+  - `appointment.reminder_due`
+  All event consumption relies strictly on denormalized contract payloads; the notification service performs no cross-service SQL queries or synchronous lookups back to the monolith.
+- **Published Events (`socket.q`):**
+  - When in-app notifications are saved, `notification-service` enqueues `notification.created` into its own transactional outbox table.
+  - The `OutboxRelay` publishes `notification.created` to RabbitMQ.
+  - The monolith socket layer consumes `socket.q` and pushes `notification:new` over WebSockets to room `user:{userId}`.
+
+#### 3. Trust Boundary & Security
+- **Port Isolation:** Port `3004` is NOT exposed on host interfaces; it is accessible only within the internal Docker Compose bridge network (`queueless_network`).
+- **Internal Shared Token:** Gateway authenticates requests via `auth_request /internal/auth-verify`, attaches `X-Internal-Token: ${INTERNAL_TOKEN}`, `X-User-Id`, and `X-User-Role`.
+- **Constant-Time Verification:** Service validates `X-Internal-Token` with `crypto.timingSafeEqual` and rejects forged or missing tokens with 401 Unauthorized.
+
+#### 4. Monolith Rollback Flag (`NOTIFICATIONS_MODE`)
+- Monolith config supports `NOTIFICATIONS_MODE=embedded|service` (defaults to `service`).
+- In `embedded` mode: monolith mounts `/api/notifications` routes and activates in-process event handlers.
+- In `service` mode: monolith unmounts `/api/notifications` routes and warns if a consumer conflict is detected on startup.
+
+#### 5. Intentionally Retained Monolith Responsibilities
+- **Reminder Job:** The 15-minute appointment reminder cron remains inside the monolith Booking module because appointment time calculation and slot status evaluation belong to the Booking domain. It publishes `appointment.reminder_due` to RabbitMQ.
+- **WebSocket Gateway:** The Socket.io connection manager and user room management (`user:{userId}`) remain on the monolith to avoid premature connection splitting.
+
+#### 6. Failure-Behavior Matrix
+
+| Component Failure | System Behavior | User Experience | Recovery Mechanism |
+| :--- | :--- | :--- | :--- |
+| **Notification Service DOWN** | Bookings, queue operations, and admin actions succeed without blocking or delays. Events buffer in RabbitMQ `notification.q`. | Bookings succeed immediately. In frontend, notification bell dropdown gracefully shows "Notifications are temporarily unavailable" with error toasts throttled to $\le 1$ per minute without UI crashes. | Once service restarts, it consumes buffered events from RabbitMQ and delivers queued emails/notifications. |
+| **RabbitMQ Broker DOWN** | Outbox events are safely committed within PostgreSQL transactions in `outbox_events` table. | End-user operations succeed normally. Real-time push and emails paused temporarily. | `OutboxRelay` resumes polling upon reconnection and drains all pending outbox rows in order. |
+| **SMTP Server (MailHog) DOWN** | Notification service retries email delivery 3 times with backoff. Marks row as `failed` with `last_error`. | In-app notifications remain fully functional and unread count increments. | Admins view failed deliveries at `GET /api/admin/notifications` for operational triage. |
+
 

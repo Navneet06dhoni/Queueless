@@ -66,6 +66,10 @@ const envSchema = z.object({
   // Event Bus & Transport
   EVENT_TRANSPORT: z.enum(['inprocess', 'rabbitmq']).default('inprocess'),
   RABBITMQ_URL: z.string().default('amqp://guest:guest@localhost:5672'),
+
+  // Notification Architecture Mode & Internal Token
+  NOTIFICATIONS_MODE: z.enum(['embedded', 'service']).default('service'),
+  INTERNAL_TOKEN: z.string().default('queueless-internal-gateway-secret-key-32ch'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

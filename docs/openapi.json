@@ -6055,6 +6055,149 @@
         }
       }
     },
+    "/api/admin/outbox": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "View transactional outbox events by status (pending or failed)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "failed"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "number",
+              "nullable": true,
+              "default": 1
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "number",
+              "nullable": true,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Outbox events list with pagination and oldest unpublished age",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "event_type": {
+                            "type": "string"
+                          },
+                          "payload": {
+                            "nullable": true
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "retry_count": {
+                            "type": "number"
+                          },
+                          "last_error": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "published_at": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "event_type",
+                          "status",
+                          "retry_count",
+                          "last_error",
+                          "created_at",
+                          "published_at"
+                        ]
+                      }
+                    },
+                    "oldestUnpublishedAgeSeconds": {
+                      "type": "number",
+                      "nullable": true
+                    },
+                    "page": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "events",
+                    "oldestUnpublishedAgeSeconds",
+                    "page",
+                    "limit"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Missing or invalid access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden - User does not have sufficient role or ownership permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/businesses": {
       "get": {
         "tags": [
@@ -6438,6 +6581,10 @@
                         "database",
                         "redis"
                       ]
+                    },
+                    "oldestUnpublishedOutboxAgeSeconds": {
+                      "type": "number",
+                      "nullable": true
                     },
                     "timestamp": {
                       "type": "string",

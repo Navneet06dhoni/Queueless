@@ -4,6 +4,7 @@ import { createApp } from '../src/app';
 import { setupTestDb, TestDbInstance } from './setupTestDb';
 import { authenticate, requireRole } from '../src/middleware/auth';
 import { errorHandler } from '../src/middleware/errorHandler';
+import redis from '../src/config/redis';
 
 describe('Auth Module Integration Tests', () => {
   let testDb: TestDbInstance;
@@ -12,6 +13,9 @@ describe('Auth Module Integration Tests', () => {
 
   beforeAll(async () => {
     testDb = await setupTestDb();
+    if (redis.status === 'wait') {
+      await redis.connect();
+    }
     app = createApp();
 
     // Dedicated app to test authenticate + requireRole middleware pipeline
@@ -34,6 +38,9 @@ describe('Auth Module Integration Tests', () => {
 
   beforeEach(async () => {
     await testDb.resetData();
+    if (redis.status === 'ready' || redis.status === 'connect') {
+      await redis.flushdb();
+    }
   });
 
   describe('POST /api/auth/register', () => {
@@ -161,6 +168,53 @@ describe('Auth Module Integration Tests', () => {
       expect(wrongPassRes.body.error.message).toBe('Invalid email or password');
       expect(unknownEmailRes.body.error.message).toBe('Invalid email or password');
       expect(wrongPassRes.body.error.code).toBe(unknownEmailRes.body.error.code);
+    });
+
+    it('per-email lockout: 10 failures from IP A lock out IP A, but do not lock out IP B for the same email', async () => {
+      const email = 'lockout_test@example.com';
+      await request(app).post('/api/auth/register').send({
+        name: 'Lockout User',
+        email,
+        password: 'CorrectPassword123',
+        role: 'customer',
+      });
+
+      const ipA = '198.51.100.1';
+      const ipB = '198.51.100.2';
+
+      // 10 failed login attempts from IP A
+      for (let i = 0; i < 10; i++) {
+        const failRes = await request(app)
+          .post('/api/auth/login')
+          .set('X-Forwarded-For', ipA)
+          .send({
+            email,
+            password: 'WrongPassword999',
+          });
+        expect(failRes.status).toBe(401);
+      }
+
+      // 11th attempt from IP A (even with correct password) is locked out -> 401 generic
+      const lockedResA = await request(app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', ipA)
+        .send({
+          email,
+          password: 'CorrectPassword123',
+        });
+      expect(lockedResA.status).toBe(401);
+      expect(lockedResA.body.error.message).toBe('Invalid email or password');
+
+      // Attempt from IP B with correct password succeeds -> 200 OK
+      const successResB = await request(app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', ipB)
+        .send({
+          email,
+          password: 'CorrectPassword123',
+        });
+      expect(successResB.status).toBe(200);
+      expect(successResB.body.accessToken).toBeDefined();
     });
   });
 

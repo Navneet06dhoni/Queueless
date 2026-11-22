@@ -2,7 +2,12 @@ import { ApiError } from '../../utils/ApiError';
 import { events } from '../../events';
 import { setUserBlockedCache } from '../../middleware/auth';
 import { adminRepository, AdminRepository } from './admin.repository';
-import { logger } from '../../utils/logger';
+import { userPort, UserPort } from '../auth/auth.ports';
+import { businessPort, BusinessPort } from '../business/business.ports';
+import { bookingPort, BookingPort } from '../booking/booking.ports';
+import { queuePort, QueuePort } from '../queue/queue.ports';
+import { notificationPort, NotificationPort } from '../notification/notification.ports';
+import { outboxRepository } from '../../events/outbox.repository';
 import {
   AdminAuditLogItem,
   AdminStats,
@@ -11,13 +16,53 @@ import {
 } from './admin.types';
 
 export class AdminService {
-  constructor(private repo: AdminRepository = adminRepository) {}
+  constructor(
+    private repo: AdminRepository = adminRepository,
+    private uPort: UserPort = userPort,
+    private bizPort: BusinessPort = businessPort,
+    private bkPort: BookingPort = bookingPort,
+    private qPort: QueuePort = queuePort,
+    private nPort: NotificationPort = notificationPort
+  ) {}
 
   /**
-   * Get platform statistics
+   * Get platform statistics composed purely through module ports (no cross-module SQL joins)
    */
   async getStats(): Promise<AdminStats> {
-    return this.repo.getStats();
+    const [uStats, bStats, apptStats, qStats, notifStats] = await Promise.all([
+      this.uPort.getUserStats(),
+      this.bizPort.getBusinessStats(),
+      this.bkPort.getBookingStats(),
+      this.qPort.getQueueStats(),
+      this.nPort.getNotificationStats(),
+    ]);
+
+    // Merge daily series by date
+    const dailyMap = new Map<string, { date: string; newUsers: number; newAppointments: number }>();
+
+    for (const u of uStats.dailyUsers) {
+      dailyMap.set(u.date, { date: u.date, newUsers: u.newUsers, newAppointments: 0 });
+    }
+
+    for (const a of apptStats.dailyAppointments) {
+      const existing = dailyMap.get(a.date);
+      if (existing) {
+        existing.newAppointments = a.newAppointments;
+      } else {
+        dailyMap.set(a.date, { date: a.date, newUsers: 0, newAppointments: a.newAppointments });
+      }
+    }
+
+    const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      users: uStats.usersByRole,
+      businesses: bStats.bizByStatus,
+      appointments: apptStats.apptByStatus,
+      queueServed30Days: qStats.queueServed30Days,
+      failedEmails: notifStats.failedEmails,
+      daily,
+    };
   }
 
   /**
@@ -44,8 +89,11 @@ export class AdminService {
   /**
    * Block a user:
    * - Cannot block self or another admin (403)
-   * - Atomic transaction: sets flags, revokes refresh tokens, cancels future appointments & frees slots
-   * - After commit: publishes booking.cancelled events, removes from active queues, updates Redis set
+   * - Sets user flags, revokes refresh tokens, records audit log
+   * - Updates Redis blocked set
+   * - Publishes user.blocked event { v: 1, userId, reason, blockedBy }
+   * - Booking module listens and cancels future appointments
+   * - Queue module listens and removes user from live queues
    */
   async blockUser(adminId: string, targetUserId: string, reason?: string) {
     if (adminId === targetUserId) {
@@ -64,45 +112,21 @@ export class AdminService {
       );
     }
 
-    // 1. Database atomic transaction
-    const { cancelledAppointments } = await this.repo.blockUserTx(adminId, targetUserId, reason);
+    // 1. Database update & audit log
+    await this.repo.blockUserTx(adminId, targetUserId, reason);
 
     // 2. Update Redis blocked set
     await setUserBlockedCache(targetUserId, true);
 
-    // 3. Publish cancellation events after commit
-    for (const appt of cancelledAppointments) {
-      events.publish('booking.cancelled', {
-        appointmentId: appt.id,
-        businessId: appt.business_id,
-        cancelledBy: 'admin',
-        customerNotification: true,
-        ownerNotification: true,
-      });
-    }
-
-    // 4. Remove user from any active queue
-    try {
-      const leftEntries = await this.repo.removeUserFromActiveQueues(targetUserId);
-      if (leftEntries.length > 0) {
-        const { queueRedis } = await import('../queue/queue.redis');
-        const { queueService } = await import('../queue/queue.service');
-
-        for (const entry of leftEntries) {
-          await queueRedis.removeEntry(entry.business_id, entry.id, targetUserId);
-          await queueService.broadcastQueueState(entry.business_id);
-          await queueService.updateWaitingPositions(entry.business_id);
-        }
-      }
-    } catch (err: any) {
-      logger.warn({ err: err.message, targetUserId }, `[AdminService] Error cleaning up queues for blocked user`);
-    }
-
-    return {
-      message: 'User has been blocked successfully',
+    // 3. Publish user.blocked event (decoupled: booking and queue react autonomously)
+    await events.publish('user.blocked', {
+      v: 1,
       userId: targetUserId,
-      cancelledAppointmentsCount: cancelledAppointments.length,
-    };
+      reason,
+      blockedBy: adminId,
+    });
+
+    return { message: 'User blocked successfully' };
   }
 
   /**
@@ -117,29 +141,16 @@ export class AdminService {
     await this.repo.unblockUserTx(adminId, targetUserId);
     await setUserBlockedCache(targetUserId, false);
 
-    return {
-      message: 'User has been unblocked successfully',
-      userId: targetUserId,
-    };
+    return { message: 'User unblocked successfully' };
   }
 
   /**
-   * Record audit log
+   * List admin audit logs with pagination
    */
-  async logAudit(
-    adminId: string,
-    action: string,
-    targetType: string,
-    targetId: string | null,
-    details: any
-  ): Promise<void> {
-    await this.repo.createAuditLog(adminId, action, targetType, targetId, details);
-  }
-
-  /**
-   * List admin audit logs
-   */
-  async listAuditLogs(page: number = 1, limit: number = 20): Promise<{
+  async listAuditLogs(
+    page: number = 1,
+    limit: number = 20
+  ): Promise<{
     data: AdminAuditLogItem[];
     page: number;
     limit: number;
@@ -152,6 +163,23 @@ export class AdminService {
       limit,
       total,
     };
+  }
+
+  /**
+   * Get outbox visibility rows and counts
+   */
+  async getOutbox(status?: string, limit: number = 20) {
+    return outboxRepository.getOutboxRows(status, limit);
+  }
+
+  async logAudit(
+    adminId: string,
+    action: string,
+    targetType: string,
+    targetId: string | null,
+    details: any
+  ) {
+    return this.repo.createAuditLog(adminId, action, targetType, targetId, details);
   }
 }
 

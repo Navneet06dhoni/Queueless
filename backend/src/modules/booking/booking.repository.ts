@@ -138,7 +138,9 @@ export class BookingRepository {
         slot_start_time: Date;
         slot_end_time: Date;
         service_id: string;
+        service_name: string;
         business_id: string;
+        business_name: string;
         business_owner_id: string;
       })
     | null
@@ -147,7 +149,8 @@ export class BookingRepository {
       `SELECT 
          a.id, a.slot_id, a.customer_id, a.status, a.created_at,
          s.start_time as slot_start_time, s.end_time as slot_end_time,
-         s.service_id, srv.business_id, b.owner_id as business_owner_id
+         s.service_id, srv.name as service_name,
+         srv.business_id, b.name as business_name, b.owner_id as business_owner_id
        FROM appointments a
        JOIN slots s ON a.slot_id = s.id
        JOIN services srv ON s.service_id = srv.id

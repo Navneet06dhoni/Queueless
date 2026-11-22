@@ -19,18 +19,24 @@ import {
   emitQueueRemoved,
   emitQueueUpdated,
 } from '../../socket';
+import { businessPort, BusinessPort } from '../business/business.ports';
+import { bookingPort, BookingPort } from '../booking/booking.ports';
+import { userPort, UserPort } from '../auth/auth.ports';
 
 export class QueueService {
   constructor(
     private repo: QueueRepository = queueRepository,
-    private redisClient: QueueRedisClient = queueRedisClient
+    private redisClient: QueueRedisClient = queueRedisClient,
+    private bPort: BusinessPort = businessPort,
+    private bkPort: BookingPort = bookingPort,
+    private uPort: UserPort = userPort
   ) {}
 
   /**
    * Helper to verify business ownership
    */
   private async assertBusinessOwner(businessId: string, userId: string, userRole: string): Promise<any> {
-    const biz = await this.repo.findBusinessById(businessId);
+    const biz = (await this.bPort.findBusiness(businessId)) as any;
     if (!biz) {
       throw ApiError.notFound('Business not found', 'BUSINESS_NOT_FOUND');
     }
@@ -69,7 +75,7 @@ export class QueueService {
    * Validate business is approved, queue_open is true, and within working hours in Asia/Kolkata
    */
   private async validateQueueOpenAndWorkingHours(businessId: string): Promise<any> {
-    const biz = await this.repo.findBusinessById(businessId);
+    const biz = (await this.bPort.findBusiness(businessId)) as any;
     if (!biz) {
       throw ApiError.notFound('Business not found', 'BUSINESS_NOT_FOUND');
     }
@@ -85,7 +91,7 @@ export class QueueService {
     // In Luxon: 1 = Monday ... 7 = Sunday. DB day_of_week is 0 = Sunday ... 6 = Saturday
     const dayOfWeek = kolkataNow.weekday % 7;
 
-    const hours = await this.repo.findWorkingHoursForDay(businessId, dayOfWeek);
+    const hours = await this.bPort.findWorkingHoursForDay(businessId, dayOfWeek);
     if (!hours) {
       throw ApiError.conflict('Business is currently closed outside of working hours', 'OUTSIDE_WORKING_HOURS');
     }
@@ -144,6 +150,35 @@ export class QueueService {
   }
 
   /**
+   * Acquire a temporary Redis lock for serializing queue additions per business
+   */
+  private async acquireQueueLock(businessId: string): Promise<() => Promise<void>> {
+    const lockKey = `lock:queue:join:${businessId}`;
+    const token = Math.random().toString(36).substring(2);
+    const ttlMs = 5000;
+    const maxWaitMs = 10000;
+    const start = Date.now();
+
+    while (Date.now() - start < maxWaitMs) {
+      const res = await this.redisClient.redis.set(lockKey, token, 'PX', ttlMs, 'NX');
+      if (res === 'OK') {
+        return async () => {
+          const lua = `
+            if redis.call('get', KEYS[1]) == ARGV[1] then
+              return redis.call('del', KEYS[1])
+            else
+              return 0
+            end
+          `;
+          await this.redisClient.redis.eval(lua, 1, lockKey, token).catch(() => {});
+        };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw ApiError.conflict('Queue is busy, please try again', 'QUEUE_BUSY');
+  }
+
+  /**
    * Customer: Join Virtual Queue
    */
   async joinQueue(businessId: string, customerId: string) {
@@ -155,60 +190,72 @@ export class QueueService {
       throw ApiError.conflict('You are already in an active queue', 'ALREADY_IN_QUEUE');
     }
 
-    const kolkataNow = DateTime.fromJSDate(now(), { zone: config.BUSINESS_TIMEZONE });
-    const dateKey = kolkataNow.toFormat('yyyy-MM-dd');
-    const ticketNumber = await this.redisClient.getNextTicketNumber(businessId, dateKey);
-    const customerName = await this.repo.findCustomerName(customerId);
-
-    const currentTime = now();
-    const entryScore = currentTime.getTime();
-
-    // 1. Insert into PostgreSQL
+    const releaseLock = await this.acquireQueueLock(businessId);
     let dbEntry: any;
+    let ticketNumber: number;
+    let position: number;
+    let estimatedWaitMinutes: number;
+
     try {
-      dbEntry = await this.repo.createQueueEntry({
-        businessId,
-        customerId,
-        ticketNumber,
-        source: 'online',
-        score: entryScore,
-        joinedAt: currentTime,
-        status: 'waiting',
-      });
-    } catch (err: any) {
-      if (err.code === '23505') {
-        throw ApiError.conflict('You are already in an active queue', 'ALREADY_IN_QUEUE');
+      const kolkataNow = DateTime.fromJSDate(now(), { zone: config.BUSINESS_TIMEZONE });
+      const dateKey = kolkataNow.toFormat('yyyy-MM-dd');
+      ticketNumber = await this.redisClient.getNextTicketNumber(businessId, dateKey);
+      const user = await this.uPort.getUserBasic(customerId);
+      const customerName = user?.name || null;
+
+      const currentTime = now();
+      const dbScore = currentTime.getTime();
+      const redisScore = dbScore + (ticketNumber % 1000000) * 0.0001;
+
+      // 1. Insert into PostgreSQL
+      try {
+        dbEntry = await this.repo.createQueueEntry({
+          businessId,
+          customerId,
+          ticketNumber,
+          source: 'online',
+          score: dbScore,
+          joinedAt: currentTime,
+          status: 'waiting',
+        });
+      } catch (err: any) {
+        if (err.code === '23505') {
+          throw ApiError.conflict('You are already in an active queue', 'ALREADY_IN_QUEUE');
+        }
+        throw err;
       }
-      throw err;
-    }
 
-    // 2. Add to Redis
-    try {
-      await this.redisClient.addEntry(businessId, {
-        id: dbEntry.id,
-        businessId,
-        customerId,
-        customerName: customerName || 'Customer',
-        ticketNumber,
-        source: 'online',
-        joinedAt: currentTime.toISOString(),
-        score: entryScore,
-      });
-    } catch (err) {
-      // Compensate on Redis failure
-      await this.repo.markQueueEntryLeft(dbEntry.id, customerId);
-      throw err;
-    }
+      // 2. Add to Redis
+      try {
+        await this.redisClient.addEntry(businessId, {
+          id: dbEntry.id,
+          businessId,
+          customerId,
+          customerName: customerName || 'Customer',
+          ticketNumber,
+          source: 'online',
+          joinedAt: currentTime.toISOString(),
+          score: redisScore,
+        });
+      } catch (err) {
+        // Compensate on Redis failure
+        await this.repo.markQueueEntryLeft(dbEntry.id, customerId);
+        throw err;
+      }
 
-    // 3. Compute position and estimated wait
-    const position = (await this.redisClient.getPosition(businessId, dbEntry.id)) || 1;
-    const avgMinutes = await this.getAverageServiceMinutes(businessId);
-    const estimatedWaitMinutes = this.calculateEstimatedWait(position, avgMinutes);
-    await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
+      // 3. Compute position and estimated wait
+      position = (await this.redisClient.getPosition(businessId, dbEntry.id)) || 1;
+      const avgMinutes = await this.getAverageServiceMinutes(businessId);
+      estimatedWaitMinutes = this.calculateEstimatedWait(position, avgMinutes);
+      await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
+    } finally {
+      await releaseLock();
+    }
     await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
 
     // 4. Publish Event and Socket notifications
     events.publish('queue.joined', {
+      v: 1,
       businessId,
       entryId: dbEntry.id,
       customerId,
@@ -237,7 +284,7 @@ export class QueueService {
    * Customer: Check-in with booked appointment (Hybrid Queue)
    */
   async checkInAppointment(businessId: string, customerId: string, appointmentId: string) {
-    const biz = await this.repo.findBusinessById(businessId);
+    const biz = (await this.bPort.findBusiness(businessId)) as any;
     if (!biz) {
       throw ApiError.notFound('Business not found', 'BUSINESS_NOT_FOUND');
     }
@@ -248,8 +295,8 @@ export class QueueService {
       throw ApiError.conflict('Queue is currently closed', 'QUEUE_CLOSED');
     }
 
-    // Validate appointment
-    const appt = await this.repo.findAppointmentForCheckIn(appointmentId);
+    // Validate appointment via BookingPort
+    const appt = await this.bkPort.getAppointmentForCheckIn(appointmentId);
     if (!appt || appt.customer_id !== customerId) {
       throw ApiError.notFound('Appointment not found', 'APPOINTMENT_NOT_FOUND');
     }
@@ -288,7 +335,8 @@ export class QueueService {
     const kolkataNow = DateTime.fromJSDate(now(), { zone: config.BUSINESS_TIMEZONE });
     const dateKey = kolkataNow.toFormat('yyyy-MM-dd');
     const ticketNumber = await this.redisClient.getNextTicketNumber(businessId, dateKey);
-    const customerName = await this.repo.findCustomerName(customerId);
+    const user = await this.uPort.getUserBasic(customerId);
+    const customerName = user?.name || null;
 
     // HYBRID RULE: score is the slot START TIME in epoch ms!
     const entryScore = slotStart.getTime();
@@ -335,6 +383,7 @@ export class QueueService {
     await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
 
     events.publish('queue.joined', {
+      v: 1,
       businessId,
       entryId: dbEntry.id,
       customerId,
@@ -365,6 +414,7 @@ export class QueueService {
     await this.redisClient.removeEntry(businessId, entry.id, customerId);
 
     events.publish('queue.left', {
+      v: 1,
       businessId,
       entryId: entry.id,
       customerId,
@@ -398,6 +448,7 @@ export class QueueService {
       waitMinutes = this.calculateEstimatedWait(position, avg);
     }
 
+    const biz = await this.bPort.findBusiness(entry.business_id);
     return {
       ticketNumber: entry.ticket_number,
       position,
@@ -405,7 +456,7 @@ export class QueueService {
       estimatedWaitMinutes: waitMinutes,
       status: entry.status,
       businessId: entry.business_id,
-      businessName: entry.business_name,
+      businessName: biz?.name || '',
     };
   }
 
@@ -443,7 +494,7 @@ export class QueueService {
    * Public: Get public queue status (no customer names/IDs)
    */
   async getPublicStatus(businessId: string): Promise<PublicQueueStatus> {
-    const biz = await this.repo.findBusinessById(businessId);
+    const biz = (await this.bPort.findBusiness(businessId)) as any;
     if (!biz) {
       throw ApiError.notFound('Business not found', 'BUSINESS_NOT_FOUND');
     }
@@ -500,6 +551,7 @@ export class QueueService {
       .filter((u): u is { customerId: string; position: number } => u.customerId !== null);
 
     events.publish('queue.advanced', {
+      v: 1,
       businessId,
       calledEntryId: result.next.id,
       calledCustomerId: result.next.customerId,
@@ -664,7 +716,7 @@ export class QueueService {
    */
   async toggleQueueOpen(businessId: string, ownerId: string, userRole: string, open: boolean) {
     await this.assertBusinessOwner(businessId, ownerId, userRole);
-    await this.repo.updateBusinessQueueOpen(businessId, open);
+    await this.bPort.updateBusinessQueueOpen(businessId, open);
 
     await this.broadcastQueueState(businessId);
 
@@ -739,7 +791,7 @@ export class QueueService {
           id: row.id,
           businessId: row.business_id,
           customerId: row.customer_id,
-          customerName: row.customer_name || null,
+          customerName: (row as any).customer_name || row.walk_in_name || null,
           walkInName: row.walk_in_name,
           ticketNumber: row.ticket_number,
           source: row.source,
@@ -757,7 +809,7 @@ export class QueueService {
           id: called.id,
           businessId: called.business_id,
           customerId: called.customer_id,
-          customerName: called.customer_name || null,
+          customerName: (called as any).customer_name || called.walk_in_name || null,
           walkInName: called.walk_in_name,
           ticketNumber: called.ticket_number,
           source: called.source,

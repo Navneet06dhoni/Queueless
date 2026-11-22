@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../../db';
 import redis from '../../config/redis';
+import { outboxRepository } from '../../events/outbox.repository';
 
 const router = Router();
 
@@ -49,15 +50,25 @@ router.get('/ready', async (_req: Request, res: Response) => {
     errors.redis = err.message || 'Redis check failed';
   }
 
+  // Check oldest unpublished outbox row age
+  let oldestOutboxAge: number | null = null;
+  try {
+    oldestOutboxAge = await outboxRepository.getOldestUnpublishedAgeSeconds();
+  } catch {
+    oldestOutboxAge = null;
+  }
+
+  const isDegraded = oldestOutboxAge !== null && oldestOutboxAge > 60;
   const isHealthy = dbStatus === 'up' && redisStatus === 'up';
-  const statusCode = isHealthy ? 200 : 503;
+  const statusCode = !isHealthy ? 503 : 200;
 
   res.status(statusCode).json({
-    status: isHealthy ? 'ok' : 'down',
+    status: !isHealthy ? 'down' : isDegraded ? 'degraded' : 'ok',
     checks: {
       database: dbStatus,
       redis: redisStatus,
     },
+    oldestUnpublishedOutboxAgeSeconds: oldestOutboxAge,
     ...(Object.keys(errors).length > 0 ? { details: errors } : {}),
     timestamp: new Date().toISOString(),
   });

@@ -11,6 +11,7 @@ import {
   auditLogQuerySchema,
   blockUserBodySchema,
   listUsersQuerySchema,
+  outboxQuerySchema,
 } from './admin.validation';
 
 const router = Router();
@@ -36,6 +37,13 @@ router.get(
   '/audit-log',
   validateRequest({ query: auditLogQuerySchema }),
   adminController.listAuditLogs
+);
+
+// 4b. Outbox Events Visibility: GET /api/admin/outbox
+router.get(
+  '/outbox',
+  validateRequest({ query: outboxQuerySchema }),
+  adminController.getOutbox
 );
 
 // 5. Business Management: GET /api/admin/businesses

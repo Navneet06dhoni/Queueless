@@ -4,11 +4,16 @@ import { logger } from '../utils/logger';
 
 const getInitialPoolConfig = () => {
   const isTest = process.env.NODE_ENV === 'test' || config.NODE_ENV === 'test';
+  const baseConfig = {
+    max: isTest ? 60 : config.DB_POOL_MAX,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 15000,
+  };
   if (isTest && config.TEST_DATABASE_URL) {
-    return { connectionString: config.TEST_DATABASE_URL };
+    return { connectionString: config.TEST_DATABASE_URL, ...baseConfig };
   }
   if (config.DATABASE_URL) {
-    return { connectionString: config.DATABASE_URL };
+    return { connectionString: config.DATABASE_URL, ...baseConfig };
   }
   return {
     host: config.DB_HOST,
@@ -16,9 +21,7 @@ const getInitialPoolConfig = () => {
     user: config.DB_USER,
     password: config.DB_PASSWORD,
     database: isTest ? 'queueless_test' : config.DB_NAME,
-    max: config.DB_POOL_MAX,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    ...baseConfig,
   };
 };
 

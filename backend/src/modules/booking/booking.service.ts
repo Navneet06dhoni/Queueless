@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon';
 import { bookingRepository, BookingRepository } from './booking.repository';
-import { businessRepository, BusinessRepository } from '../business/business.repository';
+import { businessPort, BusinessPort } from '../business/business.ports';
+import { userPort, UserPort } from '../auth/auth.ports';
 import { withTransaction } from '../../db';
 import { config } from '../../config';
 import { events } from '../../events';
@@ -16,7 +17,8 @@ import { PaginatedResult } from '../business/business.types';
 export class BookingService {
   constructor(
     private repo: BookingRepository = bookingRepository,
-    private bRepo: BusinessRepository = businessRepository
+    private bPort: BusinessPort = businessPort,
+    private uPort: UserPort = userPort
   ) {}
 
   /**
@@ -70,6 +72,31 @@ export class BookingService {
         bookedAppt = await this.repo.createAppointment(client, slotId, customerId);
         await this.repo.updateSlotStatus(client, slotId, 'booked');
         slotDetails = slot;
+
+        // Fetch customer name/email for denormalized event
+        const user = await this.uPort.getUserBasic(customerId, client);
+        const customer = { name: user?.name || '', email: user?.email || '' };
+
+        // Transactional event publish into Outbox
+        await events.publish(
+          'booking.confirmed',
+          {
+            v: 1,
+            appointmentId: bookedAppt!.id,
+            customerId,
+            customerName: customer.name,
+            customerEmail: customer.email,
+            businessId: slotDetails.business_id,
+            businessName: slotDetails.business_name,
+            ownerId: slotDetails.business_owner_id,
+            serviceId: slotDetails.service_id,
+            serviceName: slotDetails.service_name,
+            slotId: slotDetails.id,
+            slotStartTime: slotDetails.start_time,
+            slotEndTime: slotDetails.end_time,
+          },
+          client
+        );
       });
     } catch (err: any) {
       // Catch partial unique index violation (code 23505) and translate to 409
@@ -78,15 +105,6 @@ export class BookingService {
       }
       throw err;
     }
-
-    // 4. Publish event AFTER transaction commits successfully
-    events.publish('booking.confirmed', {
-      appointmentId: bookedAppt!.id,
-      customerId,
-      businessId: slotDetails.business_id,
-      slotId: slotDetails.id,
-      startTime: slotDetails.start_time,
-    });
 
     return {
       id: bookedAppt!.id,
@@ -169,16 +187,31 @@ export class BookingService {
       await this.repo.updateAppointmentStatus(client, appointmentId, 'cancelled');
       await this.repo.updateSlotStatus(client, appt.slot_id, 'free');
       cancelledAppt = appt;
-    });
 
-    // Publish event AFTER commit
-    events.publish('booking.cancelled', {
-      appointmentId: cancelledAppt.id,
-      customerId: cancelledAppt.customer_id,
-      businessId: cancelledAppt.business_id,
-      slotId: cancelledAppt.slot_id,
-      startTime: cancelledAppt.slot_start_time,
-      cancelledBy,
+      // Fetch customer name/email for denormalized cancellation event
+      const user = await this.uPort.getUserBasic(appt.customer_id, client);
+      const customer = { name: user?.name || '', email: user?.email || '' };
+
+      await events.publish(
+        'booking.cancelled',
+        {
+          v: 1,
+          appointmentId: appt.id,
+          customerId: appt.customer_id,
+          customerName: customer.name,
+          customerEmail: customer.email,
+          businessId: appt.business_id,
+          businessName: appt.business_name,
+          ownerId: appt.business_owner_id,
+          serviceName: appt.service_name,
+          slotId: appt.slot_id,
+          slotStartTime: appt.slot_start_time,
+          cancelledBy,
+          customerNotification: true,
+          ownerNotification: true,
+        },
+        client
+      );
     });
 
     return { message: 'Appointment cancelled successfully' };
@@ -287,11 +320,16 @@ export class BookingService {
         await this.repo.updateSlotStatus(client, newSlotId, 'booked');
 
         eventPayload = {
+          v: 1,
           appointmentId: appt.id,
           customerId,
           businessId: appt.business_id,
+          businessName: appt.business_name,
+          serviceName: appt.service_name,
           oldSlotId: appt.slot_id,
           newSlotId,
+          oldSlotStartTime: appt.slot_start_time,
+          newSlotStartTime: newSlot.start_time,
           startTime: newSlot.start_time,
         };
       });
@@ -387,7 +425,7 @@ export class BookingService {
     ownerId: string,
     dateStr: string
   ): Promise<AppointmentDetail[]> {
-    const business = await this.bRepo.findBusinessById(businessId);
+    const business = await this.bPort.findBusiness(businessId);
     if (!business) {
       throw ApiError.notFound('Business not found', 'BUSINESS_NOT_FOUND');
     }

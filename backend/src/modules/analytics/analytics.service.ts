@@ -1,8 +1,10 @@
 import { DateTime } from 'luxon';
 import redis from '../../config/redis';
 import { config } from '../../config';
-import { ApiError } from '../../utils/ApiError';
 import { logger } from '../../utils/logger';
+import { businessPort, BusinessPort } from '../business/business.ports';
+import { bookingPort, BookingPort } from '../booking/booking.ports';
+import { queuePort, QueuePort } from '../queue/queue.ports';
 import { analyticsRepository, AnalyticsRepository } from './analytics.repository';
 import {
   BusinessSummaryAnalytics,
@@ -10,7 +12,12 @@ import {
 } from './analytics.types';
 
 export class AnalyticsService {
-  constructor(private repo: AnalyticsRepository = analyticsRepository) {}
+  constructor(
+    private bPort: BusinessPort = businessPort,
+    private bkPort: BookingPort = bookingPort,
+    private qPort: QueuePort = queuePort,
+    private repo: AnalyticsRepository = analyticsRepository
+  ) {}
 
   /**
    * Verify business exists and user has owner or admin access
@@ -19,21 +26,15 @@ export class AnalyticsService {
     businessId: string,
     userId: string,
     role: string
-  ): Promise<{ id: string; owner_id: string }> {
-    const biz = await this.repo.findBusiness(businessId);
-    if (!biz) {
-      throw ApiError.notFound('Business not found', 'BUSINESS_NOT_FOUND');
-    }
-
-    if (role !== 'admin' && biz.owner_id !== userId) {
-      throw ApiError.forbidden('Access denied. You do not own this business', 'FORBIDDEN');
-    }
-
-    return biz;
+  ): Promise<{ id: string; owner_id: string; name: string }> {
+    return this.bPort.assertBusinessOwner(businessId, userId, role);
   }
 
   /**
-   * Get cached or fresh business summary analytics
+   * Get cached or fresh business summary analytics.
+   * Splits into queue metrics from queue, and appointment metrics from booking via BookingPort.
+   * Appointment metrics query is fail-soft with a 2-second timeout: if booking fails or times out,
+   * returns queue metrics with appointment fields set to null and partial: true.
    */
   async getSummary(
     businessId: string,
@@ -64,17 +65,19 @@ export class AnalyticsService {
       }
     }
 
-    // 2. Compute in database
+    // 2. Compute metrics through analyticsRepository (aggregates QueuePort and BookingPort fail-soft)
     const summary = await this.repo.getSummary(businessId, from, to);
 
-    // 3. Set Redis cache (60s TTL)
-    try {
-      if (redis.status === 'ready' || redis.status === 'connect') {
-        await redis.setex(cacheKey, 60, JSON.stringify(summary));
-      }
-    } catch (err: any) {
-      if (config.NODE_ENV !== 'test') {
-        logger.warn({ err: err.message, businessId }, `[Redis] Error setting summary cache`);
+    // 3. Set Redis cache (60s TTL, only when complete)
+    if (!summary.partial) {
+      try {
+        if (redis.status === 'ready' || redis.status === 'connect') {
+          await redis.setex(cacheKey, 60, JSON.stringify(summary));
+        }
+      } catch (err: any) {
+        if (config.NODE_ENV !== 'test') {
+          logger.warn({ err: err.message, businessId }, `[Redis] Error setting summary cache`);
+        }
       }
     }
 
@@ -91,17 +94,17 @@ export class AnalyticsService {
   ): Promise<BusinessTodayAnalytics> {
     await this.assertBusinessAccess(businessId, userId, role);
 
-    // Query live waiting count from Redis
-    let waitingNow = 0;
-    try {
-      const { queueRedis } = await import('../queue/queue.redis');
-      const waiting = await queueRedis.getWaitingEntries(businessId);
-      waitingNow = waiting.length;
-    } catch {
-      waitingNow = 0;
-    }
+    const [queueToday, nextAppointments] = await Promise.all([
+      this.qPort.getQueueToday(businessId),
+      this.bkPort.getNextAppointments(businessId, 5),
+    ]);
 
-    return this.repo.getToday(businessId, waitingNow);
+    return {
+      waitingNow: queueToday.waitingNow,
+      servedToday: queueToday.servedToday,
+      averageWaitMinutesToday: queueToday.averageWaitMinutesToday,
+      nextAppointments,
+    };
   }
 
   /**
@@ -123,7 +126,6 @@ export class AnalyticsService {
     const sanitizeCell = (val: any): string => {
       if (val === null || val === undefined) return '';
       let str = String(val);
-      // Prevent CSV formula injection by prefixing with a single quote if starting with =, +, -, or @
       if (/^[=+\-@]/.test(str)) {
         str = `'${str}`;
       }

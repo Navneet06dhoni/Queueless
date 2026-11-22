@@ -4,47 +4,13 @@ import { IQueueHistory, QueueEntrySource, QueueEntryStatus } from './queue.types
 export class QueueRepository {
   private query = query;
 
-  async findBusinessById(businessId: string) {
+  async findActiveEntryByCustomer(customerId: string): Promise<IQueueHistory | null> {
     const res = await this.query(
-      `SELECT id, owner_id, name, status, queue_open
-       FROM businesses
-       WHERE id = $1`,
-      [businessId]
-    );
-    return res.rows[0] || null;
-  }
-
-  async findWorkingHoursForDay(businessId: string, dayOfWeek: number) {
-    const res = await this.query(
-      `SELECT open_time, close_time
-       FROM working_hours
-       WHERE business_id = $1 AND day_of_week = $2`,
-      [businessId, dayOfWeek]
-    );
-    return res.rows[0] || null;
-  }
-
-  async findActiveEntryByCustomer(customerId: string) {
-    const res = await this.query(
-      `SELECT q.*, b.name as business_name
+      `SELECT q.*
        FROM queue_history q
-       JOIN businesses b ON q.business_id = b.id
        WHERE q.customer_id = $1 AND q.status IN ('waiting', 'called')
        LIMIT 1`,
       [customerId]
-    );
-    return res.rows[0] || null;
-  }
-
-  async findAppointmentForCheckIn(appointmentId: string) {
-    const res = await this.query(
-      `SELECT a.id, a.customer_id, a.status, a.slot_id,
-              s.start_time, s.end_time, sv.business_id
-       FROM appointments a
-       JOIN slots s ON a.slot_id = s.id
-       JOIN services sv ON s.service_id = sv.id
-       WHERE a.id = $1`,
-      [appointmentId]
     );
     return res.rows[0] || null;
   }
@@ -176,47 +142,26 @@ export class QueueRepository {
     };
   }
 
-  async updateBusinessQueueOpen(businessId: string, open: boolean): Promise<boolean> {
+  async getAllWaitingEntries(): Promise<IQueueHistory[]> {
     const res = await this.query(
-      `UPDATE businesses
-       SET queue_open = $2
-       WHERE id = $1
-       RETURNING id`,
-      [businessId, open]
-    );
-    return (res.rowCount ?? 0) > 0;
-  }
-
-  async getAllWaitingEntries(): Promise<(IQueueHistory & { customer_name?: string })[]> {
-    const res = await this.query(
-      `SELECT q.*, u.name as customer_name
+      `SELECT q.*
        FROM queue_history q
-       LEFT JOIN users u ON q.customer_id = u.id
        WHERE q.status = 'waiting'
        ORDER BY q.score ASC`
     );
     return res.rows;
   }
 
-  async getActiveCalledEntry(businessId: string): Promise<(IQueueHistory & { customer_name?: string }) | null> {
+  async getActiveCalledEntry(businessId: string): Promise<IQueueHistory | null> {
     const res = await this.query(
-      `SELECT q.*, u.name as customer_name
+      `SELECT q.*
        FROM queue_history q
-       LEFT JOIN users u ON q.customer_id = u.id
        WHERE q.business_id = $1 AND q.status = 'called' AND q.completed_at IS NULL
        ORDER BY q.called_at DESC
        LIMIT 1`,
       [businessId]
     );
     return res.rows[0] || null;
-  }
-
-  async findCustomerName(customerId: string): Promise<string | null> {
-    const res = await this.query(
-      `SELECT name FROM users WHERE id = $1`,
-      [customerId]
-    );
-    return res.rows[0]?.name || null;
   }
 }
 

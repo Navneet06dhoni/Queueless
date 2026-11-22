@@ -1,9 +1,9 @@
-import nodemailer from 'nodemailer';
+import nodemailer, { Transporter } from 'nodemailer';
 import { config } from '../../../config';
 import { EmailOptions, EmailTransport } from '../notification.types';
 
 export class NodemailerTransport implements EmailTransport {
-  private transporter: nodemailer.Transporter;
+  private transporter: Transporter;
 
   constructor() {
     if (config.SMTP_HOST) {

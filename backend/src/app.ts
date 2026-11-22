@@ -1,4 +1,4 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -14,6 +14,8 @@ import appointmentRoutes from './modules/booking/booking.routes';
 import queueRoutes from './modules/queue/queue.routes';
 import { notificationRoutes, adminNotificationRoutes } from './modules/notification/notification.routes';
 import { initNotificationSubscriptions } from './modules/notification';
+import { initBookingSubscriptions } from './modules/booking';
+import { initQueueSubscriptions } from './modules/queue';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 import healthRoutes from './modules/health/health.routes';
 import configRoutes from './modules/config/config.routes';
@@ -22,14 +24,34 @@ import { generateOpenApiSpec } from './docs/openapi';
 export const createApp = (): Express => {
   const app = express();
 
+  // Trust proxy configuration
+  if (config.TRUST_PROXY === 'true' || config.TRUST_PROXY === '1') {
+    app.set('trust proxy', 1);
+  } else if (!isNaN(Number(config.TRUST_PROXY)) && config.TRUST_PROXY !== 'false') {
+    app.set('trust proxy', Number(config.TRUST_PROXY));
+  } else if (config.TRUST_PROXY !== 'false') {
+    app.set('trust proxy', config.TRUST_PROXY);
+  }
+
   // Request ID & Logger middleware (must be first)
   app.use(requestIdMiddleware);
   app.use(requestLogger);
 
-  // Security headers with Swagger UI compatibility
+  // Security headers with strict Content-Security-Policy
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'"],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'", config.FRONTEND_ORIGIN],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
     })
   );
 
@@ -73,7 +95,15 @@ export const createApp = (): Express => {
 
   const isDocsEnabled = config.NODE_ENV !== 'production' || config.ENABLE_DOCS;
   if (isDocsEnabled) {
-    app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(spec, { explorer: true }));
+    app.use(
+      '/api/docs',
+      (_req: Request, res: Response, next: NextFunction) => {
+        res.removeHeader('Content-Security-Policy');
+        next();
+      },
+      swaggerUi.serve,
+      swaggerUi.setup(spec, { explorer: true })
+    );
   } else {
     app.use('/api/docs', (_req: Request, res: Response) => {
       const requestId = (_req as any).requestId;
@@ -102,8 +132,10 @@ export const createApp = (): Express => {
     });
   });
 
-  // Initialize notification event subscriptions
+  // Initialize event subscriptions across modules
   initNotificationSubscriptions();
+  initBookingSubscriptions();
+  initQueueSubscriptions();
 
   // Mount Module Routes
   app.use(`${config.API_PREFIX}/auth`, authRoutes);

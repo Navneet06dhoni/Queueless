@@ -45,6 +45,7 @@ const envSchema = z.object({
 
   // Docs & Observability
   ENABLE_DOCS: z.coerce.boolean().default(false),
+  TRUST_PROXY: z.string().default('false'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   ADMIN_EMAIL: z.string().email().default('admin@queueless.local'),
   ADMIN_PASSWORD: z.string().min(8).default('Admin@QueueLess123'),
@@ -61,6 +62,10 @@ const envSchema = z.object({
   NOTIFICATIONS_ENABLED: z.coerce.boolean().default(true),
   REMINDER_MINUTES_BEFORE: z.coerce.number().default(60),
   EMAIL_RETRY_DELAYS_MS: z.string().default('1000,4000,16000'),
+
+  // Event Bus & Transport
+  EVENT_TRANSPORT: z.enum(['inprocess', 'rabbitmq']).default('inprocess'),
+  RABBITMQ_URL: z.string().default('amqp://guest:guest@localhost:5672'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

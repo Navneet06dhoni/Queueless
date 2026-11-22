@@ -611,7 +611,8 @@ describe('Booking & Concurrency-Safe Locking Module', () => {
           customerId: cust.id,
           businessId,
           slotId: slot.id,
-        })
+        }),
+        expect.anything()
       );
 
       // Cancel
@@ -627,7 +628,8 @@ describe('Booking & Concurrency-Safe Locking Module', () => {
           businessId,
           slotId: slot.id,
           cancelledBy: 'customer',
-        })
+        }),
+        expect.anything()
       );
     });
 

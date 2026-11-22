@@ -12,8 +12,11 @@ import {
 } from './auth.utils';
 import { AuthResult, IUserResponse } from './auth.types';
 import { RegisterInput, LoginInput } from './auth.validation';
+import redis from '../../config/redis';
 
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;
+const MAX_LOGIN_ATTEMPTS = 10;
+const LOGIN_ATTEMPTS_TTL_SECONDS = 15 * 60; // 15 minutes
 
 export class AuthService {
   constructor(private repo: AuthRepository = authRepository) {}
@@ -61,17 +64,53 @@ export class AuthService {
     };
   }
 
-  async login(input: LoginInput): Promise<AuthResult> {
+  async login(input: LoginInput, clientIp: string = '127.0.0.1'): Promise<AuthResult> {
     const normalizedEmail = input.email.toLowerCase().trim();
+    const failKey = `login:failures:${normalizedEmail}:${clientIp}`;
+
+    // Per-email+IP login limit in Redis (10 failures per 15 min per pair)
+    try {
+      if (redis.status === 'wait') {
+        await redis.connect();
+      }
+      if (redis.status === 'ready' || redis.status === 'connect') {
+        const attempts = await redis.get(failKey);
+        if (attempts && parseInt(attempts, 10) >= MAX_LOGIN_ATTEMPTS) {
+          throw ApiError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
+        }
+      }
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      // If redis errors, don't block login
+    }
+
+    const recordFailure = async () => {
+      try {
+        if (redis.status === 'wait') {
+          await redis.connect();
+        }
+        if (redis.status === 'ready' || redis.status === 'connect') {
+          const count = await redis.incr(failKey);
+          if (count === 1) {
+            await redis.expire(failKey, LOGIN_ATTEMPTS_TTL_SECONDS);
+          }
+        }
+      } catch (err: any) {
+        logger.warn({ err: err.message }, 'Failed to record login failure in Redis');
+      }
+    };
+
     const user = await this.repo.findUserByEmail(normalizedEmail);
 
     // Generic error to prevent account enumeration
     if (!user) {
+      await recordFailure();
       throw ApiError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
     const isPasswordValid = await comparePassword(input.password, user.password_hash);
     if (!isPasswordValid) {
+      await recordFailure();
       throw ApiError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
@@ -82,6 +121,15 @@ export class AuthService {
           : 'Your account has been suspended',
         'USER_BLOCKED'
       );
+    }
+
+    // Clear login failures on successful login
+    try {
+      if (redis.status === 'ready' || redis.status === 'connect') {
+        await redis.del(failKey);
+      }
+    } catch (err: any) {
+      logger.warn({ err: err.message }, 'Failed to clear login failures in Redis');
     }
 
     const accessToken = generateAccessToken(user);

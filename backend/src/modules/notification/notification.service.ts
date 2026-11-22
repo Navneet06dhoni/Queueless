@@ -3,7 +3,12 @@ import { EventEnvelope } from '../../events';
 import { emitNotificationNew } from '../../socket';
 import { getEmailTransport } from './email/transport';
 import { notificationRepository, NotificationRepository } from './notification.repository';
+import { bookingPort } from '../booking/booking.ports';
+import { businessPort } from '../business/business.ports';
+import { userPort } from '../auth/auth.ports';
+import { queuePort } from '../queue/queue.ports';
 import {
+  appointmentReminder,
   bookingCancelledCustomer,
   bookingConfirmedCustomer,
   bookingConfirmedOwner,
@@ -94,10 +99,26 @@ export class NotificationService {
    * Event Handler: booking.confirmed
    */
   async handleBookingConfirmed(envelope: EventEnvelope): Promise<void> {
-    const appointmentId = envelope.data?.appointmentId || envelope.data?.id;
+    const d = envelope.data || {};
+    const appointmentId = d.appointmentId || d.id;
     if (!appointmentId) return;
 
-    const appt = await this.repo.getAppointmentDetails(appointmentId);
+    let appt = d.customerName && d.customerEmail && d.serviceName && d.businessName ? {
+      id: appointmentId,
+      customer_id: d.customerId,
+      customer_name: d.customerName,
+      customer_email: d.customerEmail,
+      business_id: d.businessId,
+      business_name: d.businessName,
+      owner_id: d.ownerId,
+      owner_name: d.ownerName || 'Business Owner',
+      service_name: d.serviceName,
+      start_time: d.slotStartTime || d.startTime,
+    } : null;
+
+    if (!appt) {
+      appt = (await bookingPort.getAppointmentDetails(appointmentId)) as any;
+    }
     if (!appt) return;
 
     // 1. Notify Customer (In-App + Email)
@@ -146,11 +167,26 @@ export class NotificationService {
    * Event Handler: booking.cancelled
    */
   async handleBookingCancelled(envelope: EventEnvelope): Promise<void> {
-    const appointmentId = envelope.data?.appointmentId || envelope.data?.id;
-    const cancelledBy = envelope.data?.cancelledBy;
+    const d = envelope.data || {};
+    const appointmentId = d.appointmentId || d.id;
+    const cancelledBy = d.cancelledBy;
     if (!appointmentId) return;
 
-    const appt = await this.repo.getAppointmentDetails(appointmentId);
+    let appt = d.customerName && d.serviceName && d.businessName ? {
+      id: appointmentId,
+      customer_id: d.customerId,
+      customer_name: d.customerName,
+      customer_email: d.customerEmail,
+      business_id: d.businessId,
+      business_name: d.businessName,
+      owner_id: d.ownerId,
+      service_name: d.serviceName,
+      start_time: d.slotStartTime || d.startTime,
+    } : null;
+
+    if (!appt) {
+      appt = (await bookingPort.getAppointmentDetails(appointmentId)) as any;
+    }
     if (!appt) return;
 
     const formattedTime = formatInTimezone(appt.start_time);
@@ -196,10 +232,25 @@ export class NotificationService {
    * Event Handler: booking.rescheduled
    */
   async handleBookingRescheduled(envelope: EventEnvelope): Promise<void> {
-    const appointmentId = envelope.data?.appointmentId || envelope.data?.id;
+    const d = envelope.data || {};
+    const appointmentId = d.appointmentId || d.id;
     if (!appointmentId) return;
 
-    const appt = await this.repo.getAppointmentDetails(appointmentId);
+    let appt: any = d.customerName && d.serviceName && d.businessName ? {
+      id: appointmentId,
+      customer_id: d.customerId,
+      customer_name: d.customerName,
+      customer_email: d.customerEmail,
+      business_id: d.businessId,
+      business_name: d.businessName,
+      owner_id: d.ownerId,
+      service_name: d.serviceName,
+      start_time: d.newSlotStartTime || d.startTime,
+    } : null;
+
+    if (!appt) {
+      appt = (await bookingPort.getAppointmentDetails(appointmentId)) as any;
+    }
     if (!appt) return;
 
     const formattedTime = formatInTimezone(appt.start_time);
@@ -239,13 +290,58 @@ export class NotificationService {
   }
 
   /**
+   * Event Handler: appointment.reminder_due
+   */
+  async handleAppointmentReminderDue(envelope: EventEnvelope): Promise<void> {
+    const d = envelope.data || {};
+    const appointmentId = d.appointmentId || d.id;
+    if (!appointmentId) return;
+
+    const template = appointmentReminder({
+      customerName: d.customerName || d.customer_name || 'Customer',
+      businessName: d.businessName || d.business_name || 'the business',
+      serviceName: d.serviceName || d.service_name || 'Service',
+      slotStartTime: d.slotStartTime || d.start_time,
+    });
+
+    await this.sendNotification({
+      userId: d.customerId || d.customer_id,
+      type: 'appointment.reminder',
+      title: 'Appointment Reminder',
+      message: `Your appointment for ${d.serviceName || d.service_name} at ${d.businessName || d.business_name} starts soon.`,
+      data: {
+        appointmentId,
+        slotTime: d.slotStartTime || d.start_time,
+        businessName: d.businessName || d.business_name,
+      },
+      dedupeKey: `reminder:${appointmentId}`,
+      emailOptions: {
+        to: d.customerEmail || d.customer_email,
+        subject: template.subject,
+        text: template.text,
+        html: template.html,
+      },
+    });
+  }
+
+  /**
    * Event Handler: business.status_changed
    */
   async handleBusinessStatusChanged(envelope: EventEnvelope): Promise<void> {
-    const { businessId, ownerId, status } = envelope.data || {};
+    const d = envelope.data || {};
+    const { businessId, ownerId, status } = d;
     if (!businessId || !ownerId) return;
 
-    const biz = await this.repo.getBusinessDetails(businessId);
+    let biz = d.businessName && d.ownerName ? {
+      name: d.businessName,
+      status: d.status,
+      owner_name: d.ownerName,
+      owner_email: d.ownerEmail,
+    } : null;
+
+    if (!biz) {
+      biz = await businessPort.getBusinessDetails(businessId);
+    }
     if (!biz) return;
 
     const template = businessStatusChanged({
@@ -277,19 +373,29 @@ export class NotificationService {
    * Event Handler: queue.advanced
    */
   async handleQueueAdvanced(envelope: EventEnvelope): Promise<void> {
-    const { businessId, calledEntryId, calledCustomerId, upcoming } = envelope.data || {};
+    const d = envelope.data || {};
+    const { businessId, calledEntryId, calledCustomerId, upcoming } = d;
     if (!businessId) return;
 
-    const biz = await this.repo.getBusinessDetails(businessId);
-    const businessName = biz?.name || 'the business';
+    let businessName = d.businessName;
+    if (!businessName) {
+      const biz = await businessPort.getBusinessDetails(businessId);
+      businessName = biz?.name || 'the business';
+    }
 
     // 1. Stage "called": Notify called customer (if registered customer, skip walk-ins)
     if (calledCustomerId && calledEntryId) {
-      const user = await this.repo.getUser(calledCustomerId);
+      let user = d.calledCustomerName && d.calledCustomerEmail ? {
+        name: d.calledCustomerName,
+        email: d.calledCustomerEmail,
+      } : null;
+      if (!user) {
+        user = await userPort.getUserBasic(calledCustomerId);
+      }
       if (user) {
-        let ticketNumber = envelope.data?.ticketNumber;
+        let ticketNumber = d.ticketNumber;
         if (!ticketNumber && calledEntryId) {
-          const entry = await this.repo.getQueueEntry(calledEntryId);
+          const entry = await queuePort.getQueueEntry(calledEntryId);
           ticketNumber = entry?.ticket_number;
         }
         ticketNumber = ticketNumber || 0;
@@ -322,7 +428,13 @@ export class NotificationService {
         if (!item.customerId) continue; // Skip walk-ins
 
         const entryId = item.entryId || item.customerId;
-        const user = await this.repo.getUser(item.customerId);
+        let user = item.customerName && item.customerEmail ? {
+          name: item.customerName,
+          email: item.customerEmail,
+        } : null;
+        if (!user) {
+          user = await userPort.getUserBasic(item.customerId);
+        }
         if (!user) continue;
 
         // Stage "next" (Position 1)

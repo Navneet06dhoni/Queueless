@@ -493,6 +493,8 @@ describe('Notification Module Integration Tests', () => {
         runReminderTick(),
       ]);
 
+      await events.flush();
+
       expect(claimed1 + claimed2).toBe(1); // exactly one worker claimed the near appointment!
       expect(fakeEmailTransport.sentEmails).toHaveLength(1);
       expect(fakeEmailTransport.sentEmails[0].to).toBe('rohan@test.local');

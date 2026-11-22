@@ -1292,6 +1292,49 @@ registry.registerPath({
   },
 });
 
+// GET /api/admin/outbox
+registry.registerPath({
+  method: 'get',
+  path: '/api/admin/outbox',
+  tags: ['Admin'],
+  summary: 'View transactional outbox events by status (pending or failed)',
+  security: [{ bearerAuth: [] }],
+  request: {
+    query: z.object({
+      status: z.enum(['pending', 'failed']).optional(),
+      page: z.coerce.number().optional().default(1),
+      limit: z.coerce.number().optional().default(20),
+    }),
+  },
+  responses: {
+    200: {
+      description: 'Outbox events list with pagination and oldest unpublished age',
+      content: {
+        'application/json': {
+          schema: z.object({
+            events: z.array(
+              z.object({
+                id: z.string().uuid(),
+                event_type: z.string(),
+                payload: z.any(),
+                status: z.string(),
+                retry_count: z.number(),
+                last_error: z.string().nullable(),
+                created_at: z.string().datetime(),
+                published_at: z.string().datetime().nullable(),
+              })
+            ),
+            oldestUnpublishedAgeSeconds: z.number().nullable(),
+            page: z.number(),
+            limit: z.number(),
+          }),
+        },
+      },
+    },
+    ...createErrorResponses([401, 403]),
+  },
+});
+
 // GET /api/admin/businesses
 registry.registerPath({
   method: 'get',
@@ -1408,6 +1451,7 @@ registry.registerPath({
               database: z.literal('up'),
               redis: z.literal('up'),
             }),
+            oldestUnpublishedOutboxAgeSeconds: z.number().nullable().optional(),
             timestamp: z.string().datetime(),
           }),
         },

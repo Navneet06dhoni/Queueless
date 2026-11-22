@@ -4,6 +4,7 @@ import { businessCache, BusinessCache } from './business.cache';
 import { config } from '../../config';
 import { events } from '../../events';
 import { ApiError } from '../../utils/ApiError';
+import { bookingPort, BookingPort } from '../booking/booking.ports';
 import {
   IBusiness,
   BusinessDetail,
@@ -18,7 +19,8 @@ import {
 export class BusinessService {
   constructor(
     private repo: BusinessRepository = businessRepository,
-    private cache: BusinessCache = businessCache
+    private cache: BusinessCache = businessCache,
+    private bkPort: BookingPort = bookingPort
   ) {}
 
   /**
@@ -160,7 +162,7 @@ export class BusinessService {
       throw ApiError.notFound('Service not found in this business', 'SERVICE_NOT_FOUND');
     }
 
-    const hasBookings = await this.repo.hasActiveBookingsForService(serviceId);
+    const hasBookings = await this.bkPort.hasActiveBookingsForService(serviceId);
     if (hasBookings) {
       throw ApiError.conflict(
         'Cannot delete service with active bookings or appointments',
@@ -311,7 +313,9 @@ export class BusinessService {
     await this.cache.invalidate();
 
     events.publish('business.status_changed', {
+      v: 1,
       businessId: updated.id,
+      businessName: updated.name,
       ownerId: updated.owner_id,
       status: updated.status,
     });

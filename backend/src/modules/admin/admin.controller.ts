@@ -51,6 +51,17 @@ export class AdminController {
       next(err);
     }
   };
+
+  getOutbox = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const status = req.query.status as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const result = await this.service.getOutbox(status, limit);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 export const adminController = new AdminController();

@@ -37,10 +37,11 @@ export interface BusinessSummaryAnalytics {
   medianWaitMinutes: number | null;
   averageServiceMinutes: number | null;
   estimateAccuracy: EstimateAccuracy;
-  appointments: AppointmentAnalytics;
+  appointments: AppointmentAnalytics | null;
   slotUtilization: number | null;
   peakHours: PeakHourItem[];
   daily: DailyAnalyticsItem[];
+  partial?: boolean;
 }
 
 export interface NextAppointmentItem {

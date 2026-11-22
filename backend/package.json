@@ -13,6 +13,7 @@
     "demo:double-booking": "tsx scripts/double-booking-demo.ts",
     "demo:socket": "tsx scripts/socket-demo.ts",
     "demo:notifications": "tsx scripts/notification-demo.ts",
+    "demo:outage": "tsx scripts/outage-demo.ts",
     "seed:analytics": "tsx scripts/seed-analytics.ts",
     "docs:export": "tsx scripts/export-openapi.ts",
     "test": "jest --runInBand --detectOpenHandles --forceExit"
@@ -20,6 +21,8 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@socket.io/redis-adapter": "^8.3.0",
+    "@types/amqplib": "^0.10.8",
+    "amqplib": "^2.4.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -30,7 +33,7 @@
     "ioredis": "^5.5.0",
     "jsonwebtoken": "^9.0.2",
     "luxon": "^3.7.2",
-    "nodemailer": "^6.10.0",
+    "nodemailer": "^10.6.1",
     "pg": "^8.13.3",
     "pino": "^10.4.0",
     "pino-http": "^11.0.0",

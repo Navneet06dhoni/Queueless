@@ -8,6 +8,8 @@ import { initSocketServer, closeSocketServer } from './socket';
 import { queueService } from './modules/queue/queue.service';
 import { startReminderJob, stopReminderJob } from './modules/notification/jobs/reminderJob';
 import { events } from './events';
+import { startOutboxRelay, stopOutboxRelay } from './events/outboxRelay';
+import { rabbitMQClient } from './events/rabbitmq';
 import { logger } from './utils/logger';
 
 export const performGracefulShutdown = async (
@@ -17,8 +19,9 @@ export const performGracefulShutdown = async (
 ): Promise<void> => {
   logger.info(`🛑 Received ${signal}. Gracefully shutting down...`);
 
-  // 1. Stop background appointment reminder job
+  // 1. Stop background appointment reminder job and outbox relay
   stopReminderJob();
+  stopOutboxRelay();
 
   // 2. Stop accepting new connections
   await new Promise<void>((resolve) => {
@@ -61,6 +64,13 @@ export const performGracefulShutdown = async (
     logger.warn({ err: err.message }, 'PostgreSQL pool close notice');
   }
 
+  // 7. Close RabbitMQ connection if open
+  try {
+    await rabbitMQClient.close();
+  } catch (err: any) {
+    logger.warn({ err: err.message }, 'RabbitMQ close notice');
+  }
+
   logger.info('✅ Clean shutdown completed');
 };
 
@@ -96,6 +106,18 @@ const startServer = async () => {
 
     // Start background appointment reminder job (runs every 60s)
     startReminderJob();
+
+    // Start background Transactional Outbox Relay (polls every 500ms)
+    startOutboxRelay();
+
+    // If RabbitMQ transport configured, connect and declare topology
+    if (config.EVENT_TRANSPORT === 'rabbitmq') {
+      try {
+        await rabbitMQClient.connect();
+      } catch (rmqErr: any) {
+        logger.warn({ err: rmqErr.message }, '⚠️ Could not connect to RabbitMQ on startup');
+      }
+    }
 
     server.listen(config.PORT, () => {
       logger.info(`🚀 QueueLess Backend running on port ${config.PORT}`);

@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { verifyAccessToken } from '../modules/auth/auth.utils';
-import { queueRepository } from '../modules/queue/queue.repository';
+import { businessPort } from '../modules/business/business.ports';
 import {
   CustomerQueuePosition,
   OwnerQueueDetails,
@@ -105,7 +105,7 @@ export const initSocketServer = (httpServer: http.Server): Server => {
           return;
         }
 
-        const biz = await queueRepository.findBusinessById(data.businessId);
+        const biz = await businessPort.findBusiness(data.businessId);
         if (!biz || biz.status !== 'approved') {
           if (ack) ack({ error: 'Business not found or not approved' });
           return;
@@ -143,7 +143,7 @@ export const initSocketServer = (httpServer: http.Server): Server => {
           return;
         }
 
-        const biz = await queueRepository.findBusinessById(data.businessId);
+        const biz = await businessPort.findBusiness(data.businessId);
         if (!biz || biz.owner_id !== socket.data.user.sub) {
           if (ack) ack({ error: 'Forbidden: You do not own this business' });
           return;

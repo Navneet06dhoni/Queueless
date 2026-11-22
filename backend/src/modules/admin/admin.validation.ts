@@ -32,3 +32,11 @@ export const auditLogQuerySchema = z.object({
     .optional()
     .transform((val) => (val ? Math.min(100, Math.max(1, parseInt(val, 10) || 20)) : 20)),
 });
+
+export const outboxQuerySchema = z.object({
+  status: z.enum(['pending', 'failed', 'published']).optional(),
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => (val ? Math.min(100, Math.max(1, parseInt(val, 10) || 20)) : 20)),
+});

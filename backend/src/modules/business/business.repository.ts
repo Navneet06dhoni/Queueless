@@ -269,27 +269,6 @@ export class BusinessRepository {
     };
   }
 
-  async hasActiveBookingsForService(serviceId: string): Promise<boolean> {
-    // Check if any slot is booked
-    const bookedSlotRes = await query<{ count: string }>(
-      `SELECT COUNT(*)::text as count FROM slots WHERE service_id = $1 AND status = 'booked'`,
-      [serviceId]
-    );
-    if (parseInt(bookedSlotRes.rows[0].count, 10) > 0) {
-      return true;
-    }
-
-    // Check if any appointment exists on slots of this service with non-cancelled status
-    const apptRes = await query<{ count: string }>(
-      `SELECT COUNT(*)::text as count 
-       FROM appointments a
-       JOIN slots s ON a.slot_id = s.id
-       WHERE s.service_id = $1 AND a.status IN ('confirmed', 'completed')`,
-      [serviceId]
-    );
-    return parseInt(apptRes.rows[0].count, 10) > 0;
-  }
-
   async deleteServiceAndFreeSlots(serviceId: string): Promise<void> {
     await withTransaction(async (client) => {
       // Delete free slots for this service

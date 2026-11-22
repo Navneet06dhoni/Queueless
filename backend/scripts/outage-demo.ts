@@ -199,6 +199,12 @@ async function main() {
   }
   console.log('✅ RabbitMQ broker is back online and accepting connections.');
 
+  // Restart notification-service to reconnect to RabbitMQ
+  try {
+    execSync('docker restart queueless_notification_service', { stdio: 'pipe' });
+    console.log('✅ notification-service reconnected.');
+  } catch {}
+
   // Re-establish connection for client
   await rabbitMQClient.connect();
 

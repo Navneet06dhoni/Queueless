@@ -33,7 +33,7 @@
     "gateway:lint": "docker compose exec -T gateway nginx -t",
     "test:gateway": "tsx scripts/gateway-smoke.ts",
     "test:services": "npm --prefix services/notification-service test",
-    "verify": "npm --prefix backend run docs:export && npm --prefix backend test && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix backend run build && npm --prefix frontend run build"
+    "verify": "npm --prefix backend run docs:export && npm --prefix packages/contracts test && npm --prefix packages/common test && npm --prefix packages/messaging test && npm --prefix services/notification-service test && npm --prefix backend test && npm run gateway:lint && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix backend run build && npm --prefix frontend run build"
   },
   "keywords": [
     "appointment-booking",

@@ -121,6 +121,15 @@ export const createApp = (): Express => {
   app.use(`${config.API_PREFIX}/health`, healthRoutes);
   app.use(`${config.API_PREFIX}/config`, configRoutes);
 
+  // Internal Debug endpoint for client IP observation
+  app.get('/internal/debug/client-ip', (req: Request, res: Response) => {
+    res.json({
+      ip: req.ip,
+      xForwardedFor: req.headers['x-forwarded-for'] || null,
+      trustProxy: req.app.get('trust proxy'),
+    });
+  });
+
   // Root endpoint info
   app.get('/', (_req: Request, res: Response) => {
     res.json({

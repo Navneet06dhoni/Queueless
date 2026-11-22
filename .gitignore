@@ -6,6 +6,9 @@ dist
 *.env.*
 backend/.env
 frontend/.env
+!*.env.example
+!.env.*.example
+!*.env.*.example
 coverage
 *.log
 .DS_Store

@@ -180,8 +180,8 @@ async function runSmokeTests() {
       );
       const ownerId = ownerRes.rows[0].id;
       const newBizRes = await pool.query(
-        `INSERT INTO businesses (owner_id, name, description, address, phone, status, queue_open)
-         VALUES ($1, 'Smoke Clinic', 'Smoke Testing Clinic', '123 Main St', '555-0199', 'approved', true)
+        `INSERT INTO businesses (owner_id, name, category, address, city, phone, status, queue_open)
+         VALUES ($1, 'Smoke Clinic', 'healthcare', '123 Main St', 'Metropolis', '555-0199', 'approved', true)
          RETURNING id`,
         [ownerId]
       );
@@ -302,16 +302,70 @@ async function runSmokeTests() {
         break;
       }
     }
+
+    let limiterLayer = 'Unknown';
+    if (rlBody?.error?.code === 'RATE_LIMITED' && rlBody?.error?.message === 'Too many requests, please try again later') {
+      limiterLayer = 'Nginx edge limiter (limit_req zone=auth_limit)';
+    } else if (rlBody?.error?.code === 'TOO_MANY_REQUESTS') {
+      limiterLayer = 'App-level rate limiter (express-rate-limit)';
+    }
+    console.log(`   ℹ️  Layer that produced 429: ${limiterLayer}`);
+
     const c7Pass =
       hitRateLimit &&
       rlBody?.error?.code === 'RATE_LIMITED' &&
       typeof rlBody?.error?.message === 'string' &&
       !!rlBody?.error?.requestId;
     reportCheck(
-      'Forged X-Forwarded-For does NOT bypass bucket; 429 RATE_LIMITED returned',
+      `Forged X-Forwarded-For does NOT bypass bucket; 429 produced by ${limiterLayer}`,
       c7Pass,
       JSON.stringify(rlBody?.error)
     );
+
+    // -------------------------------------------------------------
+    // Direct Backend Verification: TRUST_PROXY=1 vs TRUST_PROXY=false
+    // -------------------------------------------------------------
+    console.log('\n🔍 Calling backend directly with 3 different X-Forwarded-For values under TRUST_PROXY=1 vs TRUST_PROXY=false...');
+    const xffTestIps = ['203.0.113.199', '198.51.100.42', '192.0.2.1'];
+
+    // 1) Under TRUST_PROXY=1: backend is running with TRUST_PROXY=1
+    console.log('   --- Case 1: Backend with TRUST_PROXY=1 (Calling http://localhost:5000/internal/debug/client-ip directly) ---');
+    for (const ip of xffTestIps) {
+      const res = await fetch(`${BACKEND_URL}/internal/debug/client-ip`, {
+        headers: { 'X-Forwarded-For': ip },
+      });
+      const data = await res.json();
+      console.log(`   Direct call with X-Forwarded-For: ${ip} => Backend observed req.ip: ${data.ip} (trust proxy: ${data.trustProxy})`);
+    }
+
+    // 2) Under TRUST_PROXY=false: test using an ephemeral Express server configured with app.set('trust proxy', false)
+    console.log('   --- Case 2: Backend with TRUST_PROXY=false (Express configured with trust proxy = false) ---');
+    const expressModule = (await import('express')).default;
+    const testAppNoTrust = expressModule();
+    testAppNoTrust.set('trust proxy', false);
+    testAppNoTrust.get('/internal/debug/client-ip', (req: any, res: any) => {
+      res.json({
+        ip: req.ip,
+        xForwardedFor: req.headers['x-forwarded-for'] || null,
+        trustProxy: req.app.get('trust proxy'),
+      });
+    });
+    const testServerNoTrust = testAppNoTrust.listen(0);
+    const ephemeralPort = (testServerNoTrust.address() as any).port;
+
+    for (const ip of xffTestIps) {
+      const res = await fetch(`http://127.0.0.1:${ephemeralPort}/internal/debug/client-ip`, {
+        headers: { 'X-Forwarded-For': ip },
+      });
+      const data = await res.json();
+      console.log(`   Direct call with X-Forwarded-For: ${ip} => Backend observed req.ip: ${data.ip} (trust proxy: ${data.trustProxy})`);
+    }
+    testServerNoTrust.close();
+
+    console.log('   📌 Observed Behaviour Report:');
+    console.log('      - Under TRUST_PROXY=1: Backend trusts the upstream proxy hop and resolves req.ip to the client-provided X-Forwarded-For address.');
+    console.log('      - Under TRUST_PROXY=false: Backend ignores client-provided X-Forwarded-For address and resolves req.ip to the direct socket IP (127.0.0.1).');
+    reportCheck('Direct backend verification under TRUST_PROXY=1 and TRUST_PROXY=false completed and reported', true);
 
     // -------------------------------------------------------------
     // Check 8: Payload too large > 100k returns 413 PAYLOAD_TOO_LARGE

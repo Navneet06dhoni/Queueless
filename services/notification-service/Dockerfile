@@ -40,8 +40,8 @@ COPY packages/common/package*.json ./packages/common/
 COPY packages/messaging/package*.json ./packages/messaging/
 COPY services/notification-service/package*.json ./services/notification-service/
 
-# Install ONLY production dependencies across workspaces
-RUN npm ci --omit=dev --ignore-scripts
+# Install ONLY production dependencies for notification-service workspace
+RUN npm ci --omit=dev --workspace=services/notification-service --include-workspace-root --ignore-scripts
 
 # Stage 3: Production Runner
 FROM node:22-alpine AS runner
@@ -57,6 +57,8 @@ USER node
 # Copy production node_modules and built artifacts
 COPY --chown=node:node --from=prod-deps /app/package*.json ./
 COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
+COPY --chown=node:node --from=prod-deps /app/packages/messaging/node_modules ./packages/messaging/node_modules
+COPY --chown=node:node --from=prod-deps /app/services/notification-service/node_modules ./services/notification-service/node_modules
 COPY --chown=node:node --from=builder /app/packages/contracts/dist ./packages/contracts/dist
 COPY --chown=node:node --from=builder /app/packages/contracts/package.json ./packages/contracts/package.json
 COPY --chown=node:node --from=builder /app/packages/common/dist ./packages/common/dist

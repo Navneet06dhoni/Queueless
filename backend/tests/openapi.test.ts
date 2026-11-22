@@ -68,12 +68,13 @@ describe('OpenAPI Contract Test', () => {
       'GET /api/docs',
       'GET /api/docs/*',
       'USE /api/docs',
+      'GET /internal/debug/client-ip',
     ]);
 
     const expressRouteSet = new Set(
       rawExpressRoutes
         .map((r) => `${r.method} ${normalizePath(r.path)}`)
-        .filter((r) => !ignoredRoutes.has(r))
+        .filter((r) => !ignoredRoutes.has(r) && !r.includes('/internal/'))
     );
 
     // Extract paths from OpenAPI specification

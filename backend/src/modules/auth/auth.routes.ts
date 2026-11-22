@@ -27,7 +27,21 @@ router.post(
 
 router.post('/logout', authController.logout);
 
-router.get('/me', authenticate, authController.getMe);
+const gatewayAuthOrMonolith = (req: any, res: any, next: any) => {
+  const gatewayUserId = req.headers['x-user-id'] as string;
+  const gatewayUserRole = req.headers['x-user-role'] as string;
+  if (gatewayUserId) {
+    req.user = {
+      id: gatewayUserId,
+      role: gatewayUserRole || 'customer',
+      email: '',
+    };
+    return next();
+  }
+  return authenticate(req, res, next);
+};
+
+router.get('/me', gatewayAuthOrMonolith, authController.getMe);
 
 router.get('/verify', authenticate, authController.verify);
 

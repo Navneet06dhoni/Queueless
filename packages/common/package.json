@@ -1,0 +1,31 @@
+{
+  "name": "@queueless/common",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@queueless/contracts": "*",
+    "express": "^4.21.2",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.13.1",
+    "@types/pino-http": "^5.8.4",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.3"
+  }
+}

@@ -112,3 +112,87 @@ To cleanly decompose this modular monolith into independent deployable microserv
 - **Current State:** The notification reminder job runs a SQL query joining `appointments`, `slots`, `users`, and `businesses` to identify appointments starting in 60 minutes.
 - **Problem:** Background job violates service encapsulation by reading across 4 separate domains.
 - **Resolution for Microservices:** The Scheduling & Booking Service schedules a delayed message via RabbitMQ / AWS SQS at booking creation time (`SendAppointmentReminder` scheduled for `startTime - 60m`).
+
+---
+
+## 🏛️ Shared Packages & Gateway Architecture (Phase 10b)
+
+### 1. Monorepo Package Layout (`packages/*`)
+
+To prepare for decoupling the modular monolith into independently deployable services without code duplication or circular dependencies, common cross-cutting capabilities are extracted into strictly governed internal packages:
+
+```
+packages/
+├── contracts/             # Zod event contracts, event schemas, REST error types
+│   ├── src/events.ts      # 9 versioned event schemas & validators (publish/consume)
+│   ├── src/errors.ts      # Standardized REST error payload schema
+│   └── package.json       # Dependencies: zod ONLY
+├── common/                # HTTP & observability foundation
+│   ├── src/logger.ts      # Pino logger with automated sensitive data redaction
+│   ├── src/requestId.ts   # X-Request-Id middleware & request logger
+│   ├── src/ApiError.ts    # Standard ApiError class & static factory methods
+│   ├── src/errorHandler.ts# Central Express error handling middleware
+│   ├── src/health.ts      # Factory createHealthRouter (/live, /ready, /)
+│   ├── src/shutdown.ts    # Graceful shutdown lifecycle management
+│   ├── src/config.ts      # Strongly typed configuration loader
+│   └── package.json       # Dependencies: @queueless/contracts, express, pino, pino-http, zod
+└── messaging/             # Messaging infrastructure & transactional outbox
+    ├── src/bus.ts         # IEventBus interface & EventBus implementation
+    ├── src/rabbitmq.ts    # RabbitMQ topology (events, retry.q with TTL, dlx/dlq), publisher & consumer
+    ├── src/outbox.ts      # Generic OutboxRepository parameterized by DbExecutor
+    ├── src/relay.ts       # OutboxRelay background worker with FOR UPDATE SKIP LOCKED
+    ├── src/migration.ts   # Exported standalone SQL DDL for outbox_events & processed_events
+    └── package.json       # Dependencies: @queueless/contracts, @queueless/common, amqplib, zod
+```
+
+#### Architectural Boundary Enforcement
+- Packages in `packages/*` **NEVER** import from `backend/*` or `services/*`.
+- Packages contain **NO business domain logic or tables** (`appointments`, `businesses`, `services`, `slots`, `users`, `queue_history`, `notifications`). The only tables managed within `packages/` are `outbox_events` and `processed_events`.
+- Strict directional dependency DAG:
+  `@queueless/contracts` $\leftarrow$ `@queueless/common` $\leftarrow$ `@queueless/messaging` $\leftarrow$ `backend` / future microservices.
+
+---
+
+### 2. API Gateway & Trust Boundary (Nginx Port 8080)
+
+All external traffic enters through the Nginx API gateway (`queueless_gateway` on port `8080`):
+
+```
+Clients / Browser (Frontend)
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 Nginx Gateway (:8080)                       │
+│  - /healthz: 200 {"status":"ok"} directly from Nginx        │
+│  - /internal/*: 404 block for direct external clients       │
+│  - Request ID: Map or generate X-Request-Id ($request_id)   │
+│  - Trust Boundary: Strip incoming X-User-Id, X-User-Role    │
+│  - Rate Limiting: auth_limit (5r/m), api_limit (20r/s)      │
+│  - Payload Cap: client_max_body_size 100k                   │
+│  - Custom JSON error pages: 401, 413, 429, 502, 503, 504    │
+│  - WebSocket: Upgrade headers & 86400s timeout on /socket.io│
+│  - Canary Auth: auth_request on /api/auth/me                │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ Upstream ($BACKEND_UPSTREAM)
+                       ▼
+         ┌───────────────────────────┐
+         │ QueueLess Monolith (:5000)│
+         └───────────────────────────┘
+```
+
+#### Trust Boundary Security Invariants:
+1. **Identity Header Stripping:** Any client attempt to inject spoofed `X-User-Id`, `X-User-Role`, or `X-Internal-*` headers is stripped at ingress (`proxy_set_header X-User-Id "";`).
+2. **Standardized Forwarding:** The gateway populates `X-Forwarded-For ($remote_addr)`, `X-Forwarded-Proto ($scheme)`, `X-Forwarded-Host ($host)`, and `X-Request-Id ($gateway_request_id)`.
+3. **Upstream Isolation:** Upstream services never serve raw HTML error pages; Nginx translates connection timeouts and upstream crashes (502/503/504) into standard JSON error objects matching the `@queueless/contracts` schema.
+
+---
+
+### 3. Non-Cached `auth_request` Canary Verification Rationale
+
+For the canary route `/api/auth/me`, Nginx delegates verification to `/internal/auth-verify` (proxied to backend `/api/auth/verify`), copying verified `X-User-Id` and `X-User-Role` upstream via `auth_request_set`.
+
+#### Why Gateway Auth Caching is Explicitly Disabled:
+1. **Immediate Revocation Guarantee:** If a user logs out, their refresh/access tokens are blacklisted, or their account is suspended (`user.blocked`), caching the auth verification at the gateway level would permit unauthorized access until the cache TTL expired.
+2. **Immediate Role & Permission Updates:** Role changes (e.g., customer promoted to owner, or owner blocked by admin) must take effect on the very next HTTP request.
+3. **No Distributed Invalidation Bus Yet:** Properly caching authenticated sessions at edge proxies requires a low-latency cache eviction channel (such as Redis pub/sub or an invalidation topic). In Phase 10b, auth verification queries the fast in-memory Redis token blacklist and stateless JWT validation, achieving sub-millisecond verification overhead without cache staleness risks.
+

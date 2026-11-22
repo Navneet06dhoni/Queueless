@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 
 describe('Architecture & Module Boundary Tests', () => {
+  const rootDir = path.resolve(__dirname, '../..');
+  const packagesDir = path.resolve(rootDir, 'packages');
   const modulesDir = path.resolve(__dirname, '../src/modules');
   const moduleNames = fs.readdirSync(modulesDir).filter((file) => {
     return fs.statSync(path.join(modulesDir, file)).isDirectory();
@@ -9,8 +11,10 @@ describe('Architecture & Module Boundary Tests', () => {
 
   const getTsFiles = (dir: string): string[] => {
     let results: string[] = [];
+    if (!fs.existsSync(dir)) return results;
     const list = fs.readdirSync(dir);
     for (const file of list) {
+      if (file === 'node_modules' || file === 'dist') continue;
       const fullPath = path.join(dir, file);
       const stat = fs.statSync(fullPath);
       if (stat && stat.isDirectory()) {
@@ -34,7 +38,6 @@ describe('Architecture & Module Boundary Tests', () => {
         const lines = content.split('\n');
 
         lines.forEach((line, lineNum) => {
-          // Check for cross-module repository imports like '../other/other.repository'
           if (line.includes("from '..") || line.includes('from "..')) {
             for (const otherMod of moduleNames) {
               if (otherMod === mod) continue;
@@ -55,13 +58,6 @@ describe('Architecture & Module Boundary Tests', () => {
   });
 
   test('no module should execute direct SQL queries on another module tables', () => {
-    // Explicit forbidden tables per module to strictly enforce domain boundaries:
-    // - Admin: must not query appointments, slots, queue, or notifications directly (must use ports & events)
-    // - Analytics: must not query appointments, slots, or queue directly (must use BookingPort & QueuePort)
-    // - Queue: must not query appointments, slots, businesses, services, or working hours directly (must use BookingPort & BusinessPort)
-    // - Notification: must not query appointments, slots, businesses, services, or queue directly (reacts only to denormalized events)
-    // - Business: must not query appointments, queues, or notifications directly (must use BookingPort)
-    // - Booking: must not query queues, notifications, or audit logs directly
     const forbiddenTablesPerModule: Record<string, string[]> = {
       admin: [
         'appointments',
@@ -132,7 +128,6 @@ describe('Architecture & Module Boundary Tests', () => {
         const content = fs.readFileSync(file, 'utf-8');
 
         for (const foreignTable of forbidden) {
-          // Match SQL patterns: FROM <table>, JOIN <table>, INTO <table>, UPDATE <table>
           const sqlPattern = new RegExp(`\\b(FROM|JOIN|INTO|UPDATE)\\s+${foreignTable}\\b`, 'i');
           if (sqlPattern.test(content)) {
             sqlViolations.push(
@@ -144,5 +139,90 @@ describe('Architecture & Module Boundary Tests', () => {
     }
 
     expect(sqlViolations).toEqual([]);
+  });
+
+  describe('Shared Packages Architecture Boundaries', () => {
+    test('packages/* may never import anything from backend/* or services/*', () => {
+      const packageFiles = getTsFiles(packagesDir);
+      const violations: string[] = [];
+
+      for (const file of packageFiles) {
+        const content = fs.readFileSync(file, 'utf-8');
+        const lines = content.split('\n');
+
+        lines.forEach((line, lineNum) => {
+          if (line.includes('backend/') || line.includes('backend\\') || line.includes('services/')) {
+            violations.push(
+              `${path.relative(rootDir, file)}:${lineNum + 1} imports forbidden backend/services: "${line.trim()}"`
+            );
+          }
+        });
+      }
+
+      expect(violations).toEqual([]);
+    });
+
+    test('packages dependencies adhere strictly to architectural constraints', () => {
+      const contractsPkg = JSON.parse(
+        fs.readFileSync(path.join(packagesDir, 'contracts/package.json'), 'utf-8')
+      );
+      const commonPkg = JSON.parse(
+        fs.readFileSync(path.join(packagesDir, 'common/package.json'), 'utf-8')
+      );
+      const messagingPkg = JSON.parse(
+        fs.readFileSync(path.join(packagesDir, 'messaging/package.json'), 'utf-8')
+      );
+
+      // contracts depends only on zod
+      const contractsDeps = Object.keys(contractsPkg.dependencies || {});
+      expect(contractsDeps).toEqual(['zod']);
+
+      // common depends on zod, express, pino, pino-http, @queueless/contracts
+      const commonDeps = Object.keys(commonPkg.dependencies || {}).sort();
+      expect(commonDeps).toEqual(
+        ['@queueless/contracts', 'express', 'pino', 'pino-http', 'zod'].sort()
+      );
+
+      // messaging depends on amqplib, zod, @queueless/contracts, @queueless/common
+      const messagingDeps = Object.keys(messagingPkg.dependencies || {}).sort();
+      expect(messagingDeps).toEqual(
+        ['@queueless/common', '@queueless/contracts', 'amqplib', 'zod'].sort()
+      );
+    });
+
+    test('packages/* contains no business domain table names other than outbox_events and processed_events', () => {
+      const backendDomainTables = [
+        'users',
+        'refresh_tokens',
+        'businesses',
+        'services',
+        'working_hours',
+        'slots',
+        'appointments',
+        'queues',
+        'queue_entries',
+        'queue_history',
+        'notifications',
+        'admin_audit_log',
+      ];
+
+      const packageSrcFiles = getTsFiles(path.join(packagesDir));
+      const tableViolations: string[] = [];
+
+      for (const file of packageSrcFiles) {
+        const content = fs.readFileSync(file, 'utf-8');
+
+        for (const table of backendDomainTables) {
+          const sqlPattern = new RegExp(`\\b(FROM|JOIN|INTO|UPDATE|TABLE)\\s+${table}\\b`, 'i');
+          if (sqlPattern.test(content)) {
+            tableViolations.push(
+              `${path.relative(rootDir, file)} references domain table "${table}"`
+            );
+          }
+        }
+      }
+
+      expect(tableViolations).toEqual([]);
+    });
   });
 });

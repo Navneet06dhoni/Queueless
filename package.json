@@ -1,7 +1,18 @@
 {
   "name": "queueless",
   "version": "1.0.0",
+  "private": true,
   "description": "Smart appointment booking and live virtual queue platform for small clinics, salons and local businesses",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "packages/*",
+    "services/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "concurrently -n \"backend,frontend\" -c \"blue,magenta\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm --prefix backend run dev",
@@ -12,6 +23,8 @@
     "migrate:down": "npm --prefix backend run migrate:down",
     "seed": "npm --prefix backend run seed",
     "test:backend": "npm --prefix backend run test",
+    "gateway:lint": "docker compose exec -T gateway nginx -t",
+    "test:gateway": "tsx scripts/gateway-smoke.ts",
     "verify": "npm --prefix backend run docs:export && npm --prefix backend test && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix backend run build && npm --prefix frontend run build"
   },
   "keywords": [

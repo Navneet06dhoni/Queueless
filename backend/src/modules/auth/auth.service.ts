@@ -19,7 +19,7 @@ const MAX_LOGIN_ATTEMPTS = 10;
 const LOGIN_ATTEMPTS_TTL_SECONDS = 15 * 60; // 15 minutes
 
 export class AuthService {
-  constructor(private repo: AuthRepository = authRepository) {}
+  constructor(private repo: AuthRepository = authRepository) { }
 
   async register(input: RegisterInput): Promise<AuthResult> {
     if ((input.role as string) === 'admin') {

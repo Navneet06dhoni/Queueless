@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import redis from '../../config/redis';
 import { IBusiness, PaginatedResult, BusinessListQuery } from './business.types';
+import { logger } from '../../utils/logger';
 
 const CACHE_TTL_SECONDS = 60;
 const VERSION_KEY = 'businesses:cache_version';
@@ -15,7 +16,7 @@ export class BusinessCache {
       }
       return v;
     } catch (err: any) {
-      console.warn('⚠️  Redis cache getVersion warning:', err.message);
+      logger.warn({ err: err.message }, '⚠️ Redis cache getVersion notice');
       return '1';
     }
   }
@@ -39,7 +40,7 @@ export class BusinessCache {
       if (!data) return null;
       return JSON.parse(data) as PaginatedResult<IBusiness>;
     } catch (err: any) {
-      console.warn('⚠️  Redis cache get warning (falling back to database):', err.message);
+      logger.warn({ err: err.message }, '⚠️ Redis cache get notice (falling back to database)');
       return null;
     }
   }
@@ -48,7 +49,7 @@ export class BusinessCache {
     try {
       await redis.set(key, JSON.stringify(result), 'EX', CACHE_TTL_SECONDS);
     } catch (err: any) {
-      console.warn('⚠️  Redis cache set warning:', err.message);
+      logger.warn({ err: err.message }, '⚠️ Redis cache set notice');
     }
   }
 
@@ -61,7 +62,7 @@ export class BusinessCache {
         await redis.del(...keys);
       }
     } catch (err: any) {
-      console.warn('⚠️  Redis cache invalidation warning:', err.message);
+      logger.warn({ err: err.message }, '⚠️ Redis cache invalidation notice');
     }
   }
 }

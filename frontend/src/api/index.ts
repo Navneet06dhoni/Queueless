@@ -30,6 +30,7 @@ import {
   AdminUserListItem,
   AdminAuditLogItem,
   AdminFailedNotificationItem,
+  PlatformConfig,
 } from './types';
 
 export * from './types';
@@ -414,6 +415,13 @@ export const adminApi = {
       params: { ...params, status: 'failed' },
       signal,
     });
+    return res.data;
+  },
+};
+
+export const configApi = {
+  getConfig: async (signal?: AbortSignal): Promise<PlatformConfig> => {
+    const res = await api.get<PlatformConfig>('/config', { signal });
     return res.data;
   },
 };

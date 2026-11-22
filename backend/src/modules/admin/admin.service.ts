@@ -2,6 +2,7 @@ import { ApiError } from '../../utils/ApiError';
 import { events } from '../../events';
 import { setUserBlockedCache } from '../../middleware/auth';
 import { adminRepository, AdminRepository } from './admin.repository';
+import { logger } from '../../utils/logger';
 import {
   AdminAuditLogItem,
   AdminStats,
@@ -94,7 +95,7 @@ export class AdminService {
         }
       }
     } catch (err: any) {
-      console.warn(`[AdminService] Error cleaning up queues for blocked user ${targetUserId}:`, err.message);
+      logger.warn({ err: err.message, targetUserId }, `[AdminService] Error cleaning up queues for blocked user`);
     }
 
     return {

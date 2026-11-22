@@ -3,6 +3,7 @@ import { config } from '../../config';
 import { events } from '../../events';
 import { ApiError } from '../../utils/ApiError';
 import { now } from '../../utils/clock';
+import { logger } from '../../utils/logger';
 import { queueRepository, QueueRepository } from './queue.repository';
 import { queueRedisClient, QueueRedisClient } from './queue.redis';
 import {
@@ -108,7 +109,7 @@ export class QueueService {
       const ownerData = await this.getOwnerQueueInternal(businessId);
       emitOwnerQueueUpdated(businessId, ownerData);
     } catch (err: any) {
-      console.warn(`[QueueService] Error broadcasting queue state for ${businessId}:`, err.message);
+      logger.warn({ err: err.message, businessId }, `[QueueService] Error broadcasting queue state`);
     }
   }
 
@@ -138,7 +139,7 @@ export class QueueService {
         }
       }
     } catch (err: any) {
-      console.warn(`[QueueService] Error updating waiting positions for ${businessId}:`, err.message);
+      logger.warn({ err: err.message, businessId }, `[QueueService] Error updating waiting positions`);
     }
   }
 
@@ -717,7 +718,7 @@ export class QueueService {
    * Startup / Recovery: Rebuild Redis queues from PostgreSQL waiting rows
    */
   async rebuildQueues(): Promise<void> {
-    console.log('🔄 Rebuilding Redis live queues from PostgreSQL queue_history...');
+    logger.info('🔄 Rebuilding Redis live queues from PostgreSQL queue_history...');
     const waitingRows = await this.repo.getAllWaitingEntries();
 
     // Group by business
@@ -771,7 +772,7 @@ export class QueueService {
       }
     }
 
-    console.log(`✅ Rebuilt ${businessMap.size} queues with ${waitingRows.length} active waiting entries.`);
+    logger.info(`✅ Rebuilt ${businessMap.size} queues with ${waitingRows.length} active waiting entries.`);
   }
 }
 

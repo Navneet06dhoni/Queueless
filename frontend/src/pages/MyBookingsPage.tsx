@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { bookingApi, businessApi, queueApi } from '../api';
+import { bookingApi, businessApi, queueApi, configApi } from '../api';
 import { AppointmentDetail } from '../api/types';
 import { formatDate, formatTime, formatDateTime } from '../utils/date';
 import { useToast } from '../components/ui/Toast';
@@ -31,6 +31,16 @@ export const MyBookingsPage: React.FC = () => {
   React.useEffect(() => {
     document.title = 'My Bookings | QueueLess';
   }, []);
+
+  // Platform operational timing config
+  const { data: platformConfig } = useQuery({
+    queryKey: ['platform-config'],
+    queryFn: ({ signal }) => configApi.getConfig(signal),
+    staleTime: 60 * 60 * 1000,
+  });
+  const earlyMin = platformConfig?.checkInEarlyMinutes ?? 15;
+  const graceMin = platformConfig?.checkInGraceMinutes ?? 15;
+  const cutoffMin = platformConfig?.cancellationCutoffMinutes ?? 60;
 
   // Check-In Mutation
   const checkInMutation = useMutation({
@@ -262,9 +272,9 @@ export const MyBookingsPage: React.FC = () => {
                         const nowMs = Date.now();
                         const startMs = new Date(appt.slot.start_time).getTime();
                         const diffMinutes = (startMs - nowMs) / (60 * 1000);
-                        // Start time is within 30 minutes before or after now (IST)
-                        const isWithin30MinWindow = diffMinutes >= -30 && diffMinutes <= 30;
-                        if (!isWithin30MinWindow) return null;
+                        // Check-in window based on server config (earlyMin before to graceMin after start time)
+                        const isWithinCheckInWindow = diffMinutes >= -graceMin && diffMinutes <= earlyMin;
+                        if (!isWithinCheckInWindow) return null;
 
                         const isPending =
                           checkInMutation.isPending &&
@@ -380,7 +390,7 @@ export const MyBookingsPage: React.FC = () => {
               Scheduled for: {formatDateTime(cancelTarget.slot.start_time)}
             </p>
             <p className="text-[11px] text-amber-600 dark:text-amber-400">
-              * Note: Cancellations within 60 minutes of start time are not allowed per business policy.
+              * Note: Cancellations within {cutoffMin} minutes of start time are not allowed per business policy.
             </p>
           </div>
         )}

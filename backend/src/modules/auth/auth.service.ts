@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { ApiError } from '../../utils/ApiError';
 import { authRepository, AuthRepository } from './auth.repository';
+import { logger } from '../../utils/logger';
 import {
   hashPassword,
   comparePassword,
@@ -119,7 +120,7 @@ export class AuthService {
 
     // Reuse detection: if already revoked, compromise detected on family!
     if (record.revoked_at !== null) {
-      console.warn(`🚨 Compromised refresh token reuse detected! Revoking family: ${record.family_id}`);
+      logger.warn({ familyId: record.family_id }, `🚨 Compromised refresh token reuse detected! Revoking family`);
       await this.repo.revokeFamily(record.family_id);
       throw ApiError.unauthorized(
         'Revoked refresh token reused. All associated sessions have been revoked',

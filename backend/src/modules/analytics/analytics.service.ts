@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import redis from '../../config/redis';
 import { config } from '../../config';
 import { ApiError } from '../../utils/ApiError';
+import { logger } from '../../utils/logger';
 import { analyticsRepository, AnalyticsRepository } from './analytics.repository';
 import {
   BusinessSummaryAnalytics,
@@ -59,7 +60,7 @@ export class AnalyticsService {
       }
     } catch (err: any) {
       if (config.NODE_ENV !== 'test') {
-        console.warn(`[Redis] Error checking summary cache for ${businessId}:`, err.message);
+        logger.warn({ err: err.message, businessId }, `[Redis] Error checking summary cache`);
       }
     }
 
@@ -73,7 +74,7 @@ export class AnalyticsService {
       }
     } catch (err: any) {
       if (config.NODE_ENV !== 'test') {
-        console.warn(`[Redis] Error setting summary cache for ${businessId}:`, err.message);
+        logger.warn({ err: err.message, businessId }, `[Redis] Error setting summary cache`);
       }
     }
 

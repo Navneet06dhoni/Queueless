@@ -1,5 +1,6 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 
 const getInitialPoolConfig = () => {
   const isTest = process.env.NODE_ENV === 'test' || config.NODE_ENV === 'test';
@@ -28,7 +29,7 @@ export const setPool = (newPool: any): void => {
 };
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle PostgreSQL client:', err);
+  logger.error({ err }, 'Unexpected error on idle PostgreSQL client');
 });
 
 export const query = async <T extends QueryResultRow = any>(

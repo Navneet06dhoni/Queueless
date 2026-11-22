@@ -397,3 +397,10 @@ export interface BusinessTodayAnalytics {
   averageWaitMinutesToday: number | null;
   nextAppointments: NextAppointmentItem[];
 }
+
+export interface PlatformConfig {
+  cancellationCutoffMinutes: number;
+  checkInEarlyMinutes: number;
+  checkInGraceMinutes: number;
+}
+

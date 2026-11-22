@@ -2,19 +2,23 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { ApiError } from '../utils/ApiError';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 
 export const errorHandler = (
   err: any,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void => {
+  const requestId = (req as any).requestId || (res.getHeader('X-Request-Id') as string) || undefined;
+
   // 1. Handled ApiError
   if (err instanceof ApiError) {
     res.status(err.statusCode).json({
       error: {
         code: err.code,
         message: err.message,
+        ...(requestId ? { requestId } : {}),
         ...(err.details && config.NODE_ENV !== 'production' ? { details: err.details } : {})
       }
     });
@@ -28,6 +32,7 @@ export const errorHandler = (
       error: {
         code: 'VALIDATION_ERROR',
         message: message || 'Validation failed',
+        ...(requestId ? { requestId } : {}),
         ...(config.NODE_ENV !== 'production' ? { details: err.format() } : {})
       }
     });
@@ -39,7 +44,8 @@ export const errorHandler = (
     res.status(409).json({
       error: {
         code: 'CONFLICT',
-        message: err.detail || 'A record with matching unique fields already exists'
+        message: err.detail || 'A record with matching unique fields already exists',
+        ...(requestId ? { requestId } : {})
       }
     });
     return;
@@ -50,7 +56,8 @@ export const errorHandler = (
     res.status(400).json({
       error: {
         code: 'FOREIGN_KEY_VIOLATION',
-        message: err.detail || 'Referenced record does not exist'
+        message: err.detail || 'Referenced record does not exist',
+        ...(requestId ? { requestId } : {})
       }
     });
     return;
@@ -61,18 +68,20 @@ export const errorHandler = (
     res.status(400).json({
       error: {
         code: 'INVALID_JSON',
-        message: 'Invalid JSON payload provided'
+        message: 'Invalid JSON payload provided',
+        ...(requestId ? { requestId } : {})
       }
     });
     return;
   }
 
   // 6. Generic unhandled error
-  console.error('Unhandled Server Error:', err);
+  logger.error({ err, requestId }, 'Unhandled Server Error');
   res.status(500).json({
     error: {
       code: 'INTERNAL_SERVER_ERROR',
-      message: config.NODE_ENV === 'production' ? 'An unexpected error occurred' : err.message || 'Internal server error'
+      message: config.NODE_ENV === 'production' ? 'An unexpected error occurred' : err.message || 'Internal server error',
+      ...(requestId ? { requestId } : {})
     }
   });
 };

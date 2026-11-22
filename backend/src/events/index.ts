@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
+import { logger } from '../utils/logger';
 
 export interface EventEnvelope<T = any> {
   eventId: string;
@@ -62,7 +63,7 @@ class EventBus {
         try {
           await handler(envelope);
         } catch (err: any) {
-          console.error(`[EventBus] Error handling event "${name}":`, err?.message || err);
+          logger.error({ err: err?.message || err, eventName: name }, `[EventBus] Error handling event "${name}"`);
         }
       })();
 

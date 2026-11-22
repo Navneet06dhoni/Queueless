@@ -3,6 +3,7 @@ import { Server, Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 import { verifyAccessToken } from '../modules/auth/auth.utils';
 import { queueRepository } from '../modules/queue/queue.repository';
 import {
@@ -44,17 +45,17 @@ export const initSocketServer = (httpServer: http.Server): Server => {
       .then(() => {
         if (io && pubClient && subClient) {
           io.adapter(createAdapter(pubClient, subClient));
-          console.log('✅ Socket.io Redis adapter connected successfully');
+          logger.info('✅ Socket.io Redis adapter connected successfully');
         }
       })
       .catch((err) => {
         if (config.NODE_ENV !== 'test') {
-          console.warn('⚠️ Socket.io Redis adapter could not connect, using default in-memory adapter:', err.message);
+          logger.warn({ err: err.message }, '⚠️ Socket.io Redis adapter could not connect, using default in-memory adapter');
         }
       });
   } catch (err: any) {
     if (config.NODE_ENV !== 'test') {
-      console.warn('⚠️ Could not initialize Redis adapter for Socket.io:', err.message);
+      logger.warn({ err: err.message }, '⚠️ Could not initialize Redis adapter for Socket.io');
     }
   }
 

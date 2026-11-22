@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import { config } from './index';
+import { logger } from '../utils/logger';
 
 export const redis = new Redis({
   host: config.REDIS_HOST,
@@ -17,12 +18,12 @@ export const redis = new Redis({
 });
 
 redis.on('connect', () => {
-  console.log('✅ Connected to Redis successfully');
+  logger.info('✅ Connected to Redis successfully');
 });
 
 redis.on('error', (err) => {
   if (config.NODE_ENV !== 'test') {
-    console.warn('⚠️  Redis connection warning:', err.message);
+    logger.warn({ err: err.message }, '⚠️ Redis connection warning');
   }
 });
 

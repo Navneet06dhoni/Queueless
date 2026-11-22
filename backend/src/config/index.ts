@@ -43,7 +43,9 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters long'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
-  // Initial Admin Credentials (for seeding)
+  // Docs & Observability
+  ENABLE_DOCS: z.coerce.boolean().default(false),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   ADMIN_EMAIL: z.string().email().default('admin@queueless.local'),
   ADMIN_PASSWORD: z.string().min(8).default('Admin@QueueLess123'),
 

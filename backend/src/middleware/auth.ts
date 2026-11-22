@@ -6,6 +6,7 @@ import { UserRole } from '../modules/auth/auth.types';
 import { config } from '../config';
 import redis from '../config/redis';
 import { query } from '../db';
+import { logger } from '../utils/logger';
 
 // Augment Express Request interface with authenticated user
 declare global {
@@ -55,7 +56,7 @@ export const setUserBlockedCache = async (userId: string, blocked: boolean): Pro
     }
   } catch (err: any) {
     if (config.NODE_ENV !== 'test') {
-      console.warn(`[Redis] Failed to update blocked:users for ${userId}:`, err.message);
+      logger.warn({ err: err.message, userId }, `[Redis] Failed to update blocked:users`);
     }
   }
 };

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { config } from '../../config';
 import { bookingController } from './booking.controller';
 import { authenticate, requireRole } from '../../middleware/auth';
 import { validateRequest } from '../../middleware/validate';
@@ -11,11 +13,28 @@ import {
 
 const router = Router();
 
+// Rate limiter: 30 booking requests per minute per user
+const bookingActionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => config.NODE_ENV === 'test',
+  keyGenerator: (req) => (req as any).user?.id || req.ip || 'anonymous',
+  message: {
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message: 'Too many booking requests, please try again after a minute',
+    },
+  },
+});
+
 // 1. Customer books a slot (Customers only, 403 for owners/admins)
 router.post(
   '/',
   authenticate,
   requireRole('customer'),
+  bookingActionLimiter,
   validateRequest({ body: bookAppointmentSchema }),
   bookingController.bookAppointment
 );

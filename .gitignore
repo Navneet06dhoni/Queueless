@@ -1,7 +1,11 @@
 node_modules
 dist
 .env
-.env.local
+.env.*
+*.env
+*.env.*
+backend/.env
+frontend/.env
 coverage
 *.log
 .DS_Store

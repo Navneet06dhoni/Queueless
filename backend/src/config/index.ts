@@ -70,6 +70,12 @@ const envSchema = z.object({
   // Notification Architecture Mode & Internal Token
   NOTIFICATIONS_MODE: z.enum(['embedded', 'service']).default('service'),
   INTERNAL_TOKEN: z.string().default('queueless-internal-gateway-secret-key-32ch'),
+
+  // Queue Architecture Mode & Service URL
+  QUEUE_MODE: z.enum(['embedded', 'service']).default('embedded'),
+  SOCKET_MODE: z.enum(['embedded', 'remote']).default('embedded'),
+  QUEUE_SERVICE_URL: z.string().default('http://localhost:3003'),
+  DEBUG_ENDPOINTS: z.string().default('false'),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

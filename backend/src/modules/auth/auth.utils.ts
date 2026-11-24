@@ -14,10 +14,17 @@ export const comparePassword = async (password: string, hash: string): Promise<b
   return await bcrypt.compare(password, hash);
 };
 
-export const generateAccessToken = (user: { id: string; role: UserRole }): string => {
+export const generateAccessToken = (user: {
+  id: string;
+  role: UserRole;
+  name?: string;
+  email?: string | null;
+}): string => {
   const payload: JwtPayload = {
     sub: user.id,
     role: user.role,
+    name: user.name,
+    email: user.email,
   };
 
   return jwt.sign(payload, config.JWT_ACCESS_SECRET, {
@@ -25,8 +32,13 @@ export const generateAccessToken = (user: { id: string; role: UserRole }): strin
   });
 };
 
-export const verifyAccessToken = (token: string): JwtPayload => {
-  return jwt.verify(token, config.JWT_ACCESS_SECRET) as JwtPayload;
+export const verifyAccessToken = (token: string): JwtPayload & { name: string; email: string | null } => {
+  const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as JwtPayload;
+  return {
+    ...decoded,
+    name: decoded.name !== undefined ? decoded.name : 'Customer',
+    email: decoded.email !== undefined ? decoded.email : null,
+  };
 };
 
 export const generateRefreshToken = (): string => {

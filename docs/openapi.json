@@ -3676,944 +3676,258 @@
     },
     "/api/queue/me": {
       "get": {
+        "summary": "Get active queue entry for logged-in customer",
         "tags": [
           "Queue"
         ],
-        "summary": "Get active queue ticket for authenticated customer",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Active ticket or null if not currently queued",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "entry": {
-                      "type": "object",
-                      "nullable": true,
-                      "properties": {
-                        "ticketNumber": {
-                          "type": "integer",
-                          "example": 4
-                        },
-                        "position": {
-                          "type": "integer",
-                          "example": 1
-                        },
-                        "estimatedWaitMinutes": {
-                          "type": "integer",
-                          "example": 12
-                        },
-                        "status": {
-                          "type": "string",
-                          "enum": [
-                            "waiting",
-                            "called",
-                            "completed",
-                            "skipped"
-                          ],
-                          "example": "waiting"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "online",
-                            "appointment",
-                            "walk_in"
-                          ],
-                          "example": "online"
-                        },
-                        "joinedAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "customerName": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "ticketNumber",
-                        "position",
-                        "estimatedWaitMinutes",
-                        "status",
-                        "source",
-                        "joinedAt"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "entry"
-                  ]
-                }
-              }
-            }
+            "description": "Active queue position"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
-          "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+          "404": {
+            "description": "Not in queue"
           }
         }
       }
     },
     "/api/queue/{businessId}/status": {
       "get": {
+        "summary": "Get public queue status (no auth)",
         "tags": [
           "Queue"
         ],
-        "summary": "Get public virtual queue overview for a business",
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Queue open status, waiting count, current serving ticket, and estimated wait",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "isOpen": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "waitingCount": {
-                      "type": "integer",
-                      "example": 5
-                    },
-                    "currentTicket": {
-                      "type": "integer",
-                      "nullable": true,
-                      "example": 3
-                    },
-                    "estimatedWaitMinutes": {
-                      "type": "integer",
-                      "example": 25
-                    }
-                  },
-                  "required": [
-                    "isOpen",
-                    "waitingCount",
-                    "currentTicket",
-                    "estimatedWaitMinutes"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Public queue status"
           },
           "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Business not found"
           }
         }
       }
     },
     "/api/queue/{businessId}/position": {
       "get": {
+        "summary": "Get customer live queue position in business",
         "tags": [
           "Queue"
         ],
-        "summary": "Get customer's live position in a specific business queue",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Live queue position and estimated wait",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ticketNumber": {
-                      "type": "integer",
-                      "example": 4
-                    },
-                    "position": {
-                      "type": "integer",
-                      "example": 1
-                    },
-                    "estimatedWaitMinutes": {
-                      "type": "integer",
-                      "example": 12
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "waiting",
-                        "called",
-                        "completed",
-                        "skipped"
-                      ],
-                      "example": "waiting"
-                    },
-                    "source": {
-                      "type": "string",
-                      "enum": [
-                        "online",
-                        "appointment",
-                        "walk_in"
-                      ],
-                      "example": "online"
-                    },
-                    "joinedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "customerName": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "ticketNumber",
-                    "position",
-                    "estimatedWaitMinutes",
-                    "status",
-                    "source",
-                    "joinedAt"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Customer position & wait time"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Not in queue"
           }
         }
       }
     },
     "/api/queue/{businessId}/join": {
       "post": {
+        "summary": "Join virtual queue",
         "tags": [
           "Queue"
         ],
-        "summary": "Join live virtual queue online",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "201": {
-            "description": "Joined queue successfully and ticket issued",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ticketNumber": {
-                      "type": "integer",
-                      "example": 4
-                    },
-                    "position": {
-                      "type": "integer",
-                      "example": 1
-                    },
-                    "estimatedWaitMinutes": {
-                      "type": "integer",
-                      "example": 12
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "waiting",
-                        "called",
-                        "completed",
-                        "skipped"
-                      ],
-                      "example": "waiting"
-                    },
-                    "source": {
-                      "type": "string",
-                      "enum": [
-                        "online",
-                        "appointment",
-                        "walk_in"
-                      ],
-                      "example": "online"
-                    },
-                    "joinedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "customerName": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "ticketNumber",
-                    "position",
-                    "estimatedWaitMinutes",
-                    "status",
-                    "source",
-                    "joinedAt"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Joined queue successfully"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "409": {
-            "description": "Conflict - Concurrency violation, double-booking, or rule cutoff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too Many Requests - Rate limit threshold exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Already in queue or queue closed"
           }
         }
       }
     },
     "/api/queue/{businessId}/check-in": {
       "post": {
+        "summary": "Check in with booked appointment (hybrid queue)",
         "tags": [
           "Queue"
         ],
-        "summary": "Check in with booked appointment into live hybrid queue",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "appointment_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
-                },
                 "required": [
-                  "appointment_id"
-                ]
+                  "appointmentId"
+                ],
+                "properties": {
+                  "appointmentId": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Checked in and positioned into virtual queue with appointment priority",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ticketNumber": {
-                      "type": "integer",
-                      "example": 4
-                    },
-                    "position": {
-                      "type": "integer",
-                      "example": 1
-                    },
-                    "estimatedWaitMinutes": {
-                      "type": "integer",
-                      "example": 12
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "waiting",
-                        "called",
-                        "completed",
-                        "skipped"
-                      ],
-                      "example": "waiting"
-                    },
-                    "source": {
-                      "type": "string",
-                      "enum": [
-                        "online",
-                        "appointment",
-                        "walk_in"
-                      ],
-                      "example": "online"
-                    },
-                    "joinedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "customerName": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "ticketNumber",
-                    "position",
-                    "estimatedWaitMinutes",
-                    "status",
-                    "source",
-                    "joinedAt"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Checked in successfully"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "409": {
-            "description": "Conflict - Concurrency violation, double-booking, or rule cutoff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too Many Requests - Rate limit threshold exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Early/grace violation or conflict"
           }
         }
       }
     },
     "/api/queue/{businessId}/leave": {
       "post": {
+        "summary": "Leave virtual queue",
         "tags": [
           "Queue"
         ],
-        "summary": "Leave the virtual queue",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successfully left queue",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Left queue successfully"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too Many Requests - Rate limit threshold exceeded",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Not in queue"
           }
         }
       }
     },
     "/api/queue/{businessId}/next": {
       "post": {
+        "summary": "Call next customer in queue (owner)",
         "tags": [
-          "Queue"
-        ],
-        "summary": "Call next customer in queue (Owner/Desk action)",
-        "description": "Pops next customer in FIFO order from Redis sorted set, marks them as called, and auto-completes the previously called customer.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
+          "Queue Owner"
         ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Next customer called",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "called": {
-                      "type": "object",
-                      "nullable": true,
-                      "properties": {
-                        "ticketNumber": {
-                          "type": "integer",
-                          "example": 4
-                        },
-                        "position": {
-                          "type": "integer",
-                          "example": 1
-                        },
-                        "estimatedWaitMinutes": {
-                          "type": "integer",
-                          "example": 12
-                        },
-                        "status": {
-                          "type": "string",
-                          "enum": [
-                            "waiting",
-                            "called",
-                            "completed",
-                            "skipped"
-                          ],
-                          "example": "waiting"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "online",
-                            "appointment",
-                            "walk_in"
-                          ],
-                          "example": "online"
-                        },
-                        "joinedAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "customerName": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "ticketNumber",
-                        "position",
-                        "estimatedWaitMinutes",
-                        "status",
-                        "source",
-                        "joinedAt"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "called"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Next customer called"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Forbidden"
           },
-          "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+          "409": {
+            "description": "Queue empty"
           }
         }
       }
     },
     "/api/queue/{businessId}/complete": {
       "post": {
+        "summary": "Complete current customer without calling next (owner)",
         "tags": [
-          "Queue"
-        ],
-        "summary": "Mark currently served customer as completed",
-        "security": [
-          {
-            "bearerAuth": []
-          }
+          "Queue Owner"
         ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Customer completed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Current customer marked complete"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Forbidden"
           }
         }
       }
     },
     "/api/queue/{businessId}/skip": {
       "post": {
+        "summary": "Skip current customer (owner)",
         "tags": [
-          "Queue"
-        ],
-        "summary": "Skip currently served customer (with optional requeue to end of line)",
-        "security": [
-          {
-            "bearerAuth": []
-          }
+          "Queue Owner"
         ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -4623,8 +3937,7 @@
                 "type": "object",
                 "properties": {
                   "requeue": {
-                    "type": "boolean",
-                    "default": false
+                    "type": "boolean"
                   }
                 }
               }
@@ -4633,504 +3946,133 @@
         },
         "responses": {
           "200": {
-            "description": "Customer skipped",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "message"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Current customer skipped"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Forbidden"
           }
         }
       }
     },
     "/api/queue/{businessId}/walk-in": {
       "post": {
+        "summary": "Add walk-in customer directly (owner)",
         "tags": [
-          "Queue"
-        ],
-        "summary": "Add a walk-in customer directly to the virtual queue",
-        "security": [
-          {
-            "bearerAuth": []
-          }
+          "Queue Owner"
         ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "minLength": 2,
-                    "maxLength": 80,
-                    "example": "Ramesh Patel"
-                  }
-                },
                 "required": [
                   "name"
-                ]
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Walk-in ticket added",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ticketNumber": {
-                      "type": "integer",
-                      "example": 4
-                    },
-                    "position": {
-                      "type": "integer",
-                      "example": 1
-                    },
-                    "estimatedWaitMinutes": {
-                      "type": "integer",
-                      "example": 12
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "waiting",
-                        "called",
-                        "completed",
-                        "skipped"
-                      ],
-                      "example": "waiting"
-                    },
-                    "source": {
-                      "type": "string",
-                      "enum": [
-                        "online",
-                        "appointment",
-                        "walk_in"
-                      ],
-                      "example": "online"
-                    },
-                    "joinedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "customerName": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "ticketNumber",
-                    "position",
-                    "estimatedWaitMinutes",
-                    "status",
-                    "source",
-                    "joinedAt"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Walk-in added"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Forbidden"
           }
         }
       }
     },
     "/api/queue/{businessId}/open": {
       "patch": {
+        "summary": "Toggle queue open/closed status (owner)",
         "tags": [
-          "Queue"
-        ],
-        "summary": "Toggle queue open or closed for new arrivals",
-        "security": [
-          {
-            "bearerAuth": []
-          }
+          "Queue Owner"
         ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
-                  "open": {
-                    "type": "boolean",
-                    "example": true
+                  "queue_open": {
+                    "type": "boolean"
                   }
-                },
-                "required": [
-                  "open"
-                ]
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Queue status toggled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "queue_open": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "queue_open"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Queue open status updated"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Forbidden"
           }
         }
       }
     },
     "/api/queue/{businessId}": {
       "get": {
+        "summary": "Get full queue state and today metrics (owner)",
         "tags": [
-          "Queue"
-        ],
-        "summary": "Get full queue state and waiting list for owner desk",
-        "security": [
-          {
-            "bearerAuth": []
-          }
+          "Queue Owner"
         ],
         "parameters": [
           {
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "required": true,
             "name": "businessId",
-            "in": "path"
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Full desk queue state including waiting list, currently serving, and today totals",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "isOpen": {
-                      "type": "boolean"
-                    },
-                    "current": {
-                      "type": "object",
-                      "nullable": true,
-                      "properties": {
-                        "ticketNumber": {
-                          "type": "integer",
-                          "example": 4
-                        },
-                        "position": {
-                          "type": "integer",
-                          "example": 1
-                        },
-                        "estimatedWaitMinutes": {
-                          "type": "integer",
-                          "example": 12
-                        },
-                        "status": {
-                          "type": "string",
-                          "enum": [
-                            "waiting",
-                            "called",
-                            "completed",
-                            "skipped"
-                          ],
-                          "example": "waiting"
-                        },
-                        "source": {
-                          "type": "string",
-                          "enum": [
-                            "online",
-                            "appointment",
-                            "walk_in"
-                          ],
-                          "example": "online"
-                        },
-                        "joinedAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "customerName": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "ticketNumber",
-                        "position",
-                        "estimatedWaitMinutes",
-                        "status",
-                        "source",
-                        "joinedAt"
-                      ]
-                    },
-                    "waitingList": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "ticketNumber": {
-                            "type": "integer",
-                            "example": 4
-                          },
-                          "position": {
-                            "type": "integer",
-                            "example": 1
-                          },
-                          "estimatedWaitMinutes": {
-                            "type": "integer",
-                            "example": 12
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": [
-                              "waiting",
-                              "called",
-                              "completed",
-                              "skipped"
-                            ],
-                            "example": "waiting"
-                          },
-                          "source": {
-                            "type": "string",
-                            "enum": [
-                              "online",
-                              "appointment",
-                              "walk_in"
-                            ],
-                            "example": "online"
-                          },
-                          "joinedAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "customerName": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "ticketNumber",
-                          "position",
-                          "estimatedWaitMinutes",
-                          "status",
-                          "source",
-                          "joinedAt"
-                        ]
-                      }
-                    },
-                    "totalServedToday": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "isOpen",
-                    "current",
-                    "waitingList",
-                    "totalServedToday"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request - Validation or parameter failure",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Owner queue details"
           },
           "401": {
-            "description": "Unauthorized - Missing or invalid access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Unauthorized"
           },
           "403": {
-            "description": "Forbidden - User does not have sufficient role or ownership permissions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found - The requested resource was not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
+            "description": "Forbidden"
           }
         }
       }
@@ -6474,6 +5416,310 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/internal/businesses/{id}/queue-info": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal endpoint to retrieve business queue status and working hours",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Business queue info and today working hours",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "ownerId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "workingHoursToday": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "openTime": {
+                          "type": "string"
+                        },
+                        "closeTime": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "openTime",
+                        "closeTime"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "ownerId",
+                    "status",
+                    "workingHoursToday"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Business not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/appointments/{id}/check-in-info": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal endpoint to retrieve appointment check-in details",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Appointment check-in details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "customerId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "businessId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "slotStartTime": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "customerId",
+                    "businessId",
+                    "status",
+                    "slotStartTime"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Appointment not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/auth/verify-token": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Internal endpoint to verify customer or owner token and block status",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token verified successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "userId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "userId",
+                    "role",
+                    "name"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token invalid, expired, or user suspended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/analytics/business/{id}/summary": {
+      "get": {
+        "summary": "Get queue analytics summary for a business",
+        "tags": [
+          "internal"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queue analytics summary"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/internal/analytics/business/{id}/today": {
+      "get": {
+        "summary": "Get queue today metrics for a business",
+        "tags": [
+          "internal"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Queue today metrics"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/internal/stats": {
+      "get": {
+        "summary": "Get 30-day global queue served stats",
+        "tags": [
+          "internal"
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "30-day queue stats"
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         }
       }

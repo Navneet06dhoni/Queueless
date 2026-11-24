@@ -377,23 +377,30 @@ export class NotificationService {
     const d = envelope.data || envelope;
     const businessName = d.businessName || 'Business';
 
-    if (d.called && d.called.customerId) {
+    const calledCustomerId = d.called?.customerId || d.calledCustomerId;
+    if (calledCustomerId) {
+      const customerName = d.called?.customerName || d.calledCustomerName || d.customerName || 'Customer';
+      const customerEmail = d.called?.customerEmail || d.calledCustomerEmail || d.customerEmail || null;
+
+      const ticketNumber = d.called?.ticketNumber || d.ticketNumber || 0;
       const template = queueStageCalled({
         businessName,
-        ticketNumber: d.called.ticketNumber,
+        ticketNumber,
       });
 
       await this.sendNotification({
-        userId: d.called.customerId,
+        userId: calledCustomerId,
         type: 'queue.stage',
         title: template.title,
         message: template.message,
         data: {
           businessId: d.businessId,
-          ticketNumber: d.called.ticketNumber,
+          ticketNumber,
           stage: 'called',
+          customerName: customerName || 'Valued Customer',
+          customerEmail: customerEmail || null,
         },
-        dedupeKey: `${envelope.eventId}:${d.called.customerId}:stage_called`,
+        dedupeKey: `${envelope.eventId || ''}:${calledCustomerId}:stage_called`,
       });
     }
 

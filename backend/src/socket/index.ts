@@ -272,6 +272,20 @@ export const initSocketSubscriptions = async (): Promise<void> => {
       await ch.assertQueue(queueName, { durable: true });
       await ch.bindQueue(queueName, EXCHANGES.EVENTS, 'notification.created');
 
+      // Startup guard: check if socket.q already has an active consumer attached
+      try {
+        const socketQueueInfo = await ch.checkQueue(queueName);
+        if (socketQueueInfo.consumerCount > 0) {
+          logger.warn(
+            { consumerCount: socketQueueInfo.consumerCount, queue: queueName },
+            '⚠️ [SocketStartupGuard] socket.q already has active consumer attached! Refusing to attach duplicate socket consumer.'
+          );
+          return;
+        }
+      } catch (checkErr: any) {
+        logger.warn({ err: checkErr.message }, '[SocketStartupGuard] Could not check socket.q status');
+      }
+
       await rabbitMQClient.startConsumer(
         queueName,
         'monolith_socket_consumer',

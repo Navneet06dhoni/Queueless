@@ -130,6 +130,9 @@ async function runSmokeTests() {
         Authorization: `Bearer ${custToken}`,
         'X-User-Id': '00000000-0000-0000-0000-000000000000',
         'X-User-Role': 'admin',
+        'X-User-Name': 'Spoofed Admin',
+        'X-User-Email': 'spoofed@admin.com',
+        'X-Internal-Token': 'spoofed-token',
       },
     });
     const spoofMeBody = await spoofMeRes.json();
@@ -137,11 +140,12 @@ async function runSmokeTests() {
       spoofMeRes.status === 200 &&
       spoofMeBody.user?.id === custId &&
       spoofMeBody.user?.role === 'customer' &&
-      spoofMeBody.user?.email === custEmail;
+      spoofMeBody.user?.email === custEmail &&
+      spoofMeBody.user?.name === 'Smoke Customer';
     reportCheck(
-      'Spoofed identity headers stripped; /api/auth/me returns customer identity',
+      'Spoofed identity headers stripped; /api/auth/me returns customer identity and ignores client X-User-*',
       c3Pass,
-      `User ID: ${spoofMeBody.user?.id}, Role: ${spoofMeBody.user?.role}`
+      `User ID: ${spoofMeBody.user?.id}, Role: ${spoofMeBody.user?.role}, Name: ${spoofMeBody.user?.name}`
     );
 
     // -------------------------------------------------------------
@@ -272,11 +276,15 @@ async function runSmokeTests() {
     const blockedMeRes = await fetch(`${GATEWAY_URL}/api/auth/me`, {
       headers: { Authorization: `Bearer ${custToken}` },
     });
-    const c6Pass = blockRes.status === 200 && (blockedMeRes.status === 403 || blockedMeRes.status === 401);
+    const blockedMeBody = await blockedMeRes.json();
+    const c6Pass =
+      blockRes.status === 200 &&
+      (blockedMeRes.status === 403 || blockedMeRes.status === 401) &&
+      blockedMeBody?.error?.code === 'USER_BLOCKED';
     reportCheck(
-      'Blocked user access token is rejected immediately on /api/auth/me',
+      'Blocked user access token is rejected immediately on /api/auth/me with USER_BLOCKED',
       c6Pass,
-      `Status: ${blockedMeRes.status}`
+      `Status: ${blockedMeRes.status}, Error Code: ${blockedMeBody?.error?.code}`
     );
 
     // -------------------------------------------------------------
@@ -332,7 +340,10 @@ async function runSmokeTests() {
     console.log('   --- Case 1: Backend with TRUST_PROXY=1 (Calling http://localhost:5000/internal/debug/client-ip directly) ---');
     for (const ip of xffTestIps) {
       const res = await fetch(`${BACKEND_URL}/internal/debug/client-ip`, {
-        headers: { 'X-Forwarded-For': ip },
+        headers: {
+          'X-Forwarded-For': ip,
+          'X-Internal-Token': 'queueless-internal-gateway-secret-key-32ch',
+        },
       });
       const data = await res.json();
       console.log(`   Direct call with X-Forwarded-For: ${ip} => Backend observed req.ip: ${data.ip} (trust proxy: ${data.trustProxy})`);

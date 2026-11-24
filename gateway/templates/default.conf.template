@@ -15,6 +15,8 @@ server {
     # Header safety & trust boundary (strip sensitive/spoofed headers)
     proxy_set_header X-User-Id "";
     proxy_set_header X-User-Role "";
+    proxy_set_header X-User-Name "";
+    proxy_set_header X-User-Email "";
     proxy_set_header X-Internal-Auth "";
     proxy_set_header X-Internal-Role "";
     proxy_set_header X-Internal-Secret "";
@@ -34,6 +36,7 @@ server {
 
     # Custom Error Pages returning JSON bodies matching REST format
     error_page 401 /error_401;
+    error_page 403 /error_403;
     error_page 413 /error_413;
     error_page 429 /error_429;
     error_page 502 /error_502;
@@ -44,6 +47,12 @@ server {
         internal;
         default_type application/json;
         return 401 '{"error":{"code":"UNAUTHORIZED","message":"Authentication required","requestId":"$gateway_request_id"}}';
+    }
+
+    location = /error_403 {
+        internal;
+        default_type application/json;
+        return 403 '{"error":{"code":"USER_BLOCKED","message":"Your account has been suspended","requestId":"$gateway_request_id"}}';
     }
 
     location = /error_413 {
@@ -96,6 +105,8 @@ server {
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-User-Id "";
         proxy_set_header X-User-Role "";
+        proxy_set_header X-User-Name "";
+        proxy_set_header X-User-Email "";
         proxy_connect_timeout 2s;
         proxy_read_timeout 2s;
     }
@@ -126,10 +137,14 @@ server {
         auth_request /internal/auth-verify;
         auth_request_set $auth_user_id $upstream_http_x_user_id;
         auth_request_set $auth_user_role $upstream_http_x_user_role;
+        auth_request_set $auth_user_name $upstream_http_x_user_name;
+        auth_request_set $auth_user_email $upstream_http_x_user_email;
 
         proxy_pass http://backend_service;
         proxy_set_header X-User-Id $auth_user_id;
         proxy_set_header X-User-Role $auth_user_role;
+        proxy_set_header X-User-Name $auth_user_name;
+        proxy_set_header X-User-Email $auth_user_email;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -145,6 +160,8 @@ server {
         auth_request /internal/auth-verify;
         auth_request_set $auth_user_id $upstream_http_x_user_id;
         auth_request_set $auth_user_role $upstream_http_x_user_role;
+        auth_request_set $auth_user_name $upstream_http_x_user_name;
+        auth_request_set $auth_user_email $upstream_http_x_user_email;
 
         proxy_pass http://notification_service;
         proxy_set_header Host $host;
@@ -154,6 +171,8 @@ server {
         proxy_set_header X-Request-Id $gateway_request_id;
         proxy_set_header X-User-Id $auth_user_id;
         proxy_set_header X-User-Role $auth_user_role;
+        proxy_set_header X-User-Name $auth_user_name;
+        proxy_set_header X-User-Email $auth_user_email;
         proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
         proxy_connect_timeout 2s;
         proxy_read_timeout 5s;
@@ -164,6 +183,8 @@ server {
         auth_request /internal/auth-verify;
         auth_request_set $auth_user_id $upstream_http_x_user_id;
         auth_request_set $auth_user_role $upstream_http_x_user_role;
+        auth_request_set $auth_user_name $upstream_http_x_user_name;
+        auth_request_set $auth_user_email $upstream_http_x_user_email;
 
         proxy_pass http://notification_service;
         proxy_set_header Host $host;
@@ -173,6 +194,8 @@ server {
         proxy_set_header X-Request-Id $gateway_request_id;
         proxy_set_header X-User-Id $auth_user_id;
         proxy_set_header X-User-Role $auth_user_role;
+        proxy_set_header X-User-Name $auth_user_name;
+        proxy_set_header X-User-Email $auth_user_email;
         proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
         proxy_connect_timeout 2s;
         proxy_read_timeout 5s;
@@ -187,6 +210,11 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Request-Id $gateway_request_id;
+        proxy_set_header X-User-Id "";
+        proxy_set_header X-User-Role "";
+        proxy_set_header X-User-Name "";
+        proxy_set_header X-User-Email "";
+        proxy_set_header X-Internal-Token "";
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }

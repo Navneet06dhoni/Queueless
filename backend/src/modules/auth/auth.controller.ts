@@ -110,11 +110,15 @@ export class AuthController {
       // Headers for reverse proxy (e.g. Nginx auth_request)
       res.setHeader('X-User-Id', req.user.id);
       res.setHeader('X-User-Role', req.user.role);
+      res.setHeader('X-User-Name', encodeURIComponent(req.user.name || 'Customer'));
+      res.setHeader('X-User-Email', req.user.email || '');
 
       res.status(200).json({
         status: 'ok',
         userId: req.user.id,
         role: req.user.role,
+        name: req.user.name || 'Customer',
+        email: req.user.email || null,
       });
     } catch (error) {
       next(error);

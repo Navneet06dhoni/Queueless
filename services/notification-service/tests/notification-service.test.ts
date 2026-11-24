@@ -214,6 +214,33 @@ describe('Notification Service Suite', () => {
       expect(notifs.rows[0].title).toBe('Now Serving You!');
     });
 
+    test('handles queue.advanced: falls back to "Customer" and skips email when customerName and customerEmail are missing', async () => {
+      mockSendMail.mockClear();
+      const fallbackCustomerId = '00000000-0000-0000-0000-000000000999';
+      const payload = {
+        v: 1,
+        eventId: 'evt-q-adv-fallback-1',
+        type: 'queue.advanced',
+        occurredAt: new Date().toISOString(),
+        data: {
+          businessId: 'biz-1',
+          businessName: 'Salon Express',
+          called: {
+            customerId: fallbackCustomerId,
+            ticketNumber: 8,
+          },
+        },
+      };
+
+      await notificationService.handleQueueAdvanced(payload);
+
+      const notifs = await query('SELECT * FROM notifications WHERE user_id = $1', [fallbackCustomerId]);
+      expect(notifs.rows).toHaveLength(1);
+      expect(notifs.rows[0].data.customerName).toBe('Customer');
+      expect(notifs.rows[0].data.customerEmail).toBeNull();
+      expect(mockSendMail).not.toHaveBeenCalled();
+    });
+
     test('handles appointment.reminder_due: sends upcoming appointment reminder', async () => {
       const payload = {
         v: 1,

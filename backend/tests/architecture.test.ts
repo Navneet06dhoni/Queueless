@@ -273,4 +273,48 @@ describe('Architecture & Module Boundary Tests', () => {
       expect(violations).toEqual([]);
     });
   });
+
+  describe('Queue Service Architecture Boundaries', () => {
+    const servicesDir = path.resolve(rootDir, 'services');
+    const queueServiceSrc = path.resolve(servicesDir, 'queue-service/src');
+
+    test('queue-service must never import anything from backend/ or other services', () => {
+      const queueFiles = getTsFiles(queueServiceSrc);
+      const violations: string[] = [];
+      const forbiddenRegex = /(?:from\s+['"][^'"]*(?:backend[/\\]|notification-service[/\\])|require\s*\(\s*['"][^'"]*(?:backend[/\\]|notification-service[/\\]))/;
+
+      for (const file of queueFiles) {
+        const content = fs.readFileSync(file, 'utf-8');
+        const lines = content.split('\n');
+
+        lines.forEach((line, lineNum) => {
+          if (forbiddenRegex.test(line)) {
+            violations.push(
+              `${path.relative(rootDir, file)}:${lineNum + 1} imports forbidden backend/services: "${line.trim()}"`
+            );
+          }
+        });
+      }
+
+      expect(violations).toEqual([]);
+    });
+
+    test('queue service contains no SQL against users, businesses, appointments or slots', () => {
+      const forbiddenTables = ['users', 'businesses', 'appointments', 'slots'];
+      const queueFiles = getTsFiles(queueServiceSrc);
+      const violations: string[] = [];
+
+      for (const file of queueFiles) {
+        const content = fs.readFileSync(file, 'utf-8');
+        for (const table of forbiddenTables) {
+          const sqlPattern = new RegExp(`\\b(FROM|JOIN|INTO|UPDATE|TABLE)\\s+${table}\\b`, 'i');
+          if (sqlPattern.test(content)) {
+            violations.push(`${path.relative(rootDir, file)} references forbidden core table "${table}"`);
+          }
+        }
+      }
+
+      expect(violations).toEqual([]);
+    });
+  });
 });

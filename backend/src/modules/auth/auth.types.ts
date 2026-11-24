@@ -46,4 +46,6 @@ export interface AuthResult {
 export interface JwtPayload {
   sub: string;
   role: UserRole;
+  name?: string;
+  email?: string | null;
 }

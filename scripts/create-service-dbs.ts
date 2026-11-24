@@ -35,11 +35,40 @@ async function createServiceDbs() {
       console.log('✅ Database notification_test already exists');
     }
 
-    // 4. Permissions
+    // 4. Role queue_user
+    const queueUserRes = await client.query(`SELECT 1 FROM pg_roles WHERE rolname = 'queue_user'`);
+    if (queueUserRes.rows.length === 0) {
+      console.log('👤 Creating role queue_user...');
+      await client.query(`CREATE ROLE queue_user WITH LOGIN PASSWORD 'queue_password'`);
+    } else {
+      console.log('✅ Role queue_user already exists');
+    }
+
+    // 5. Database queue_db
+    const queueDbRes = await client.query(`SELECT 1 FROM pg_database WHERE datname = 'queue_db'`);
+    if (queueDbRes.rows.length === 0) {
+      console.log('📦 Creating database queue_db...');
+      await client.query(`CREATE DATABASE queue_db OWNER queue_user`);
+    } else {
+      console.log('✅ Database queue_db already exists');
+    }
+
+    // 6. Database queue_test
+    const queueTestDbRes = await client.query(`SELECT 1 FROM pg_database WHERE datname = 'queue_test'`);
+    if (queueTestDbRes.rows.length === 0) {
+      console.log('📦 Creating test database queue_test...');
+      await client.query(`CREATE DATABASE queue_test OWNER queue_user`);
+    } else {
+      console.log('✅ Database queue_test already exists');
+    }
+
+    // 7. Permissions
     await client.query(`GRANT ALL PRIVILEGES ON DATABASE notification_db TO notification_user`);
     await client.query(`GRANT ALL PRIVILEGES ON DATABASE notification_test TO notification_user`);
-    await client.query(`REVOKE ALL ON DATABASE queueless FROM notification_user`).catch(() => {});
-    await client.query(`REVOKE ALL ON DATABASE queueless_test FROM notification_user`).catch(() => {});
+    await client.query(`GRANT ALL PRIVILEGES ON DATABASE queue_db TO queue_user`);
+    await client.query(`GRANT ALL PRIVILEGES ON DATABASE queue_test TO queue_user`);
+    await client.query(`REVOKE ALL ON DATABASE queueless FROM notification_user, queue_user`).catch(() => {});
+    await client.query(`REVOKE ALL ON DATABASE queueless_test FROM notification_user, queue_user`).catch(() => {});
 
     console.log('✨ Service databases and roles initialized successfully!');
   } finally {

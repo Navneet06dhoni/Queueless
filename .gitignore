@@ -12,3 +12,4 @@ frontend/.env
 coverage
 *.log
 .DS_Store
+verify-output.txt

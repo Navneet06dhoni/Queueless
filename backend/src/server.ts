@@ -78,8 +78,10 @@ const startServer = async () => {
   const app = createApp();
   const server = http.createServer(app);
 
-  // Initialize Socket.io server
-  initSocketServer(server);
+  // Initialize Socket.io server (only when SOCKET_MODE is embedded and QUEUE_MODE is embedded)
+  if (config.SOCKET_MODE === 'embedded' && config.QUEUE_MODE === 'embedded') {
+    initSocketServer(server);
+  }
 
   try {
     // Attempt database migration check on startup (if DB is reachable)
@@ -97,11 +99,13 @@ const startServer = async () => {
       logger.warn({ err: redisErr.message }, '⚠️ Redis connection initial attempt');
     }
 
-    // Rebuild active virtual queues into Redis
-    try {
-      await queueService.rebuildQueues();
-    } catch (qErr: any) {
-      logger.warn({ err: qErr.message }, '⚠️ Could not rebuild queues on startup');
+    // Rebuild active virtual queues into Redis (only when QUEUE_MODE is embedded)
+    if (config.QUEUE_MODE === 'embedded') {
+      try {
+        await queueService.rebuildQueues();
+      } catch (qErr: any) {
+        logger.warn({ err: qErr.message }, '⚠️ Could not rebuild queues on startup');
+      }
     }
 
     // Start background appointment reminder job (runs every 60s)

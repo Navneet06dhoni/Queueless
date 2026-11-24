@@ -14,7 +14,15 @@ const handleUserBlocked = async (userId: string) => {
   }
 };
 
+export const _resetSubscribedForTesting = (): void => {
+  subscribed = false;
+};
+
 export const initQueueSubscriptions = (): void => {
+  if (config.QUEUE_MODE === 'service') {
+    logger.info('[QueueModule] QUEUE_MODE is service; skipping monolith queue subscriptions');
+    return;
+  }
   if (subscribed) return;
   subscribed = true;
 
@@ -26,6 +34,23 @@ export const initQueueSubscriptions = (): void => {
 
   if (config.EVENT_TRANSPORT === 'rabbitmq') {
     rabbitMQClient.onConnect(async () => {
+      // Startup guard: check if queue.q already has a consumer attached
+      try {
+        const ch = await rabbitMQClient.getChannel();
+        if (ch) {
+          const queueInfo = await ch.checkQueue(QUEUES.QUEUE);
+          if (queueInfo.consumerCount > 0) {
+            logger.warn(
+              { consumerCount: queueInfo.consumerCount, queue: QUEUES.QUEUE },
+              '⚠️ [QueueStartupGuard] Queue already has active consumer attached! Refusing to attach duplicate queue consumer.'
+            );
+            return;
+          }
+        }
+      } catch (checkErr: any) {
+        logger.warn({ err: checkErr.message }, '[QueueStartupGuard] Could not check queue status');
+      }
+
       await rabbitMQClient.startConsumer(
         QUEUES.QUEUE,
         'queue_consumer',

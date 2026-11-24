@@ -19,6 +19,8 @@ import { initQueueSubscriptions } from './modules/queue';
 import analyticsRoutes from './modules/analytics/analytics.routes';
 import healthRoutes from './modules/health/health.routes';
 import configRoutes from './modules/config/config.routes';
+import internalRoutes from './modules/internal/internal.routes';
+import { requireInternalToken } from './middleware/internalAuth';
 import { generateOpenApiSpec } from './docs/openapi';
 
 export const createApp = (): Express => {
@@ -121,14 +123,21 @@ export const createApp = (): Express => {
   app.use(`${config.API_PREFIX}/health`, healthRoutes);
   app.use(`${config.API_PREFIX}/config`, configRoutes);
 
-  // Internal Debug endpoint for client IP observation
-  app.get('/internal/debug/client-ip', (req: Request, res: Response) => {
-    res.json({
-      ip: req.ip,
-      xForwardedFor: req.headers['x-forwarded-for'] || null,
-      trustProxy: req.app.get('trust proxy'),
+  // Internal API for inter-service communication (mounted only when INTERNAL_TOKEN is configured)
+  if (config.INTERNAL_TOKEN) {
+    app.use('/internal', internalRoutes);
+  }
+
+  // Internal Debug endpoint for client IP observation (test or explicit debug mode only)
+  if (config.NODE_ENV === 'test' || config.DEBUG_ENDPOINTS === 'true') {
+    app.get('/internal/debug/client-ip', requireInternalToken, (req: Request, res: Response) => {
+      res.json({
+        ip: req.ip,
+        xForwardedFor: req.headers['x-forwarded-for'] || null,
+        trustProxy: req.app.get('trust proxy'),
+      });
     });
-  });
+  }
 
   // Root endpoint info
   app.get('/', (_req: Request, res: Response) => {
@@ -144,7 +153,9 @@ export const createApp = (): Express => {
   // Initialize event subscriptions across modules
   initNotificationSubscriptions();
   initBookingSubscriptions();
-  initQueueSubscriptions();
+  if (config.QUEUE_MODE === 'embedded') {
+    initQueueSubscriptions();
+  }
 
   // Mount Module Routes
   app.use(`${config.API_PREFIX}/auth`, authRoutes);
@@ -155,7 +166,9 @@ export const createApp = (): Express => {
   }
   app.use(`${config.API_PREFIX}/admin`, adminRoutes);
   app.use(`${config.API_PREFIX}/appointments`, appointmentRoutes);
-  app.use(`${config.API_PREFIX}/queue`, queueRoutes);
+  if (config.QUEUE_MODE === 'embedded') {
+    app.use(`${config.API_PREFIX}/queue`, queueRoutes);
+  }
   app.use(`${config.API_PREFIX}/analytics`, analyticsRoutes);
 
   // 404 Handler

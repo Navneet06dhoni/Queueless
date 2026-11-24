@@ -21,13 +21,40 @@ export class AnalyticsRepository {
     from: string,
     to: string
   ): Promise<BusinessSummaryAnalytics> {
-    const queueData = await this.qPort.getQueueAnalytics(businessId, from, to);
-
+    let queueData: any;
     let apptMetrics: {
       appointments: any;
       slotUtilization: number | null;
     };
     let partial = false;
+
+    // Fail-soft queue query with 2s timeout limit
+    try {
+      let qTimer: NodeJS.Timeout;
+      const qTimeoutPromise = new Promise<never>((_, reject) => {
+        qTimer = setTimeout(
+          () => reject(new Error('QueuePort analytics query timed out after 2000ms')),
+          2000
+        );
+      });
+
+      queueData = await Promise.race([
+        this.qPort.getQueueAnalytics(businessId, from, to),
+        qTimeoutPromise,
+      ]).finally(() => clearTimeout(qTimer!));
+    } catch (err: any) {
+      logger.warn({ err: err.message, businessId }, 'Queue analytics query failed or timed out; failing soft');
+      queueData = {
+        queue: null,
+        averageWaitMinutes: null,
+        medianWaitMinutes: null,
+        averageServiceMinutes: null,
+        estimateAccuracy: null,
+        peakHours: [],
+        daily: [],
+      };
+      partial = true;
+    }
 
     try {
       let timer: NodeJS.Timeout;
@@ -61,7 +88,7 @@ export class AnalyticsRepository {
       slotUtilization: apptMetrics.slotUtilization,
       peakHours: queueData.peakHours,
       daily: queueData.daily,
-      ...(partial ? { partial: true } : {}),
+      partial,
     };
   }
 }

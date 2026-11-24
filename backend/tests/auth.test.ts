@@ -250,9 +250,9 @@ describe('Auth Module Integration Tests', () => {
   });
 
   describe('GET /api/auth/verify', () => {
-    it('should return 200 with X-User-Id and X-User-Role headers for microservice auth_request', async () => {
+    it('should return 200 with X-User-Id, X-User-Role, X-User-Name, and X-User-Email headers', async () => {
       const reg = await request(app).post('/api/auth/register').send({
-        name: 'Dr. Sunita',
+        name: 'Dr. Sunita Sharma',
         email: 'sunita@clinic.in',
         password: 'Password123',
         role: 'owner',
@@ -265,7 +265,33 @@ describe('Auth Module Integration Tests', () => {
       expect(res.status).toBe(200);
       expect(res.headers['x-user-id']).toBe(reg.body.user.id);
       expect(res.headers['x-user-role']).toBe('owner');
+      expect(decodeURIComponent(res.headers['x-user-name'])).toBe('Dr. Sunita Sharma');
+      expect(res.headers['x-user-email']).toBe('sunita@clinic.in');
       expect(res.body.status).toBe('ok');
+      expect(res.body.name).toBe('Dr. Sunita Sharma');
+      expect(res.body.email).toBe('sunita@clinic.in');
+    });
+
+    it('should accept legacy old token without name and email claims (fallback name Customer, email null)', async () => {
+      const jwt = await import('jsonwebtoken');
+      const { config } = await import('../src/config');
+      const oldPayload = {
+        sub: '12345678-1234-1234-1234-123456789012',
+        role: 'customer',
+      };
+      const oldToken = jwt.sign(oldPayload, config.JWT_ACCESS_SECRET);
+
+      const res = await request(app)
+        .get('/api/auth/verify')
+        .set('Authorization', `Bearer ${oldToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['x-user-id']).toBe(oldPayload.sub);
+      expect(res.headers['x-user-role']).toBe('customer');
+      expect(decodeURIComponent(res.headers['x-user-name'])).toBe('Customer');
+      expect(res.headers['x-user-email']).toBe('');
+      expect(res.body.name).toBe('Customer');
+      expect(res.body.email).toBeNull();
     });
   });
 

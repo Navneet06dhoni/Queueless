@@ -277,4 +277,34 @@ Phase 10c cleanly extracts the notification domain into an autonomous microservi
 | **RabbitMQ Broker DOWN** | Outbox events are safely committed within PostgreSQL transactions in `outbox_events` table. | End-user operations succeed normally. Real-time push and emails paused temporarily. | `OutboxRelay` resumes polling upon reconnection and drains all pending outbox rows in order. |
 | **SMTP Server (MailHog) DOWN** | Notification service retries email delivery 3 times with backoff. Marks row as `failed` with `last_error`. | In-app notifications remain fully functional and unread count increments. | Admins view failed deliveries at `GET /api/admin/notifications` for operational triage. |
 
+---
+
+### Queue Service Transition Architecture (Phase 10d)
+
+#### 1. Configuration Flags & Coupling Rule
+- **Mode Flags:**
+  - `QUEUE_MODE`: `embedded` | `service` (default: `embedded`)
+  - `SOCKET_MODE`: `embedded` | `remote` (default: `embedded`)
+- **Temporary Architecture Rule:**
+  `QUEUE_MODE=service` requires `SOCKET_MODE=remote` (default both to `embedded`).
+  When `QUEUE_MODE=service`, the monolith:
+  - Mounts no `/api/queue` routes
+  - Runs no Socket.io server
+  - Does not rebuild active queues on startup
+  - Registers no queue consumers for `user.blocked`
+- **Startup Guard (embedded mode):**
+  If `QUEUE_MODE=embedded` and RabbitMQ transport is enabled, the monolith verifies via passive queue check (`ch.checkQueue('queue.q')` and `ch.checkQueue('socket.q')`) that no consumers are already attached. If `consumerCount > 0`, it logs a warning and refuses to attach duplicate consumers.
+
+#### 2. Internal Core API & Inter-Service Communication
+- Mounted only when `INTERNAL_TOKEN` is configured, protected by constant-time `crypto.timingSafeEqual`:
+  - `GET /internal/businesses/:id/queue-info` -> `{ id, name, ownerId, status, workingHoursToday }` (Asia/Kolkata timezone).
+  - `GET /internal/appointments/:id/check-in-info` -> `{ id, customerId, businessId, status, slotStartTime }`.
+  - `POST /internal/auth/verify-token` -> body `{ token }` -> `{ userId, role, name }` (rejects suspended accounts).
+- All `/internal/` paths are blocked at the Nginx edge gateway (returns 404).
+
+#### 3. Client & Fail-Soft Aggregation
+- `createInternalClient` in `@queueless/common`: circuit breaker (5 consecutive failures opens for 10s, then half-opens), 2s timeout, 1 retry on GET only, `X-Request-Id` and `X-Internal-Token` propagation, and `ServiceUnavailableError` (HTTP 503).
+- Analytics fail-soft rule: In `AnalyticsRepository.getSummary`, both queue and appointment metrics are queried with a 2s timeout. If either fails or times out, the missing metrics become `null` with `partial: true` and HTTP 200 is returned to callers.
+
+
 

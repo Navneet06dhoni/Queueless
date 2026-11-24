@@ -254,11 +254,14 @@ export class QueueService {
     await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
 
     // 4. Publish Event and Socket notifications
+    const customerUser = await this.uPort.getUserBasic(customerId);
     events.publish('queue.joined', {
       v: 1,
       businessId,
       entryId: dbEntry.id,
       customerId,
+      customerName: customerUser?.name,
+      customerEmail: customerUser?.email,
       ticketNumber,
       position,
     });
@@ -382,11 +385,14 @@ export class QueueService {
     const estimatedWaitMinutes = this.calculateEstimatedWait(position, avgMinutes);
     await this.repo.updateEstimatedWaitMinutes(dbEntry.id, estimatedWaitMinutes);
 
+    const customerUser = await this.uPort.getUserBasic(customerId);
     events.publish('queue.joined', {
       v: 1,
       businessId,
       entryId: dbEntry.id,
       customerId,
+      customerName: customerUser?.name,
+      customerEmail: customerUser?.email,
       ticketNumber,
       position,
     });
@@ -550,11 +556,19 @@ export class QueueService {
       .map((w, idx) => ({ customerId: w.customerId, position: idx + 1 }))
       .filter((u): u is { customerId: string; position: number } => u.customerId !== null);
 
+    const calledUser = result.next.customerId
+      ? await this.uPort.getUserBasic(result.next.customerId)
+      : null;
+
     events.publish('queue.advanced', {
       v: 1,
       businessId,
       calledEntryId: result.next.id,
       calledCustomerId: result.next.customerId,
+      calledCustomerName: calledUser?.name,
+      calledCustomerEmail: calledUser?.email,
+      customerName: calledUser?.name,
+      customerEmail: calledUser?.email,
       upcoming,
     });
 

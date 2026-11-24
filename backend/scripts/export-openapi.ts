@@ -2,15 +2,18 @@ import fs from 'fs';
 import path from 'path';
 import { generateOpenApiSpec } from '../src/docs/openapi';
 import { getNotificationOpenApiSpec } from '../../services/notification-service/src/app';
+import { getQueueOpenApiSpec } from '../../services/queue-service/src/docs/openapi';
 
 const exportDocs = () => {
   const spec = generateOpenApiSpec();
   const notifSpec = getNotificationOpenApiSpec();
+  const queueSpec = getQueueOpenApiSpec();
 
-  // Merge paths from notification-service
+  // Merge paths from notification-service and queue-service
   spec.paths = {
     ...spec.paths,
     ...notifSpec.paths,
+    ...queueSpec.paths,
   };
 
   const docsDir = path.resolve(__dirname, '../../docs');

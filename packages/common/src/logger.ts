@@ -4,9 +4,11 @@ export const DEFAULT_REDACTION_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
   'req.headers["set-cookie"]',
+  'req.headers["x-user-email"]',
   'headers.authorization',
   'headers.cookie',
   'headers["set-cookie"]',
+  'headers["x-user-email"]',
   'authorization',
   'cookie',
   'password',
@@ -14,9 +16,11 @@ export const DEFAULT_REDACTION_PATHS = [
   'refreshToken',
   'secret',
   'accessToken',
+  'email',
   'body.password',
   'body.token',
   'body.refreshToken',
+  'body.email',
 ];
 
 export interface LoggerConfigOptions {

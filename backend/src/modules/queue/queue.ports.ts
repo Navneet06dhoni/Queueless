@@ -2,6 +2,8 @@ import { query } from '../../db';
 import { queueRedis } from './queue.redis';
 import { queueService } from './queue.service';
 import { logger } from '../../utils/logger';
+import { createInternalClient, InternalClient } from '@queueless/common';
+import { config } from '../../config';
 
 export interface QueuePort {
   getQueueStats(): Promise<{ queueServed30Days: number }>;
@@ -310,4 +312,87 @@ export class QueuePortImpl implements QueuePort {
   }
 }
 
-export const queuePort: QueuePort = new QueuePortImpl();
+export class HttpQueuePortAdapter implements QueuePort {
+  private client: InternalClient;
+
+  constructor(client?: InternalClient) {
+    this.client =
+      client ||
+      createInternalClient({
+        baseUrl: config.QUEUE_SERVICE_URL,
+        internalToken: config.INTERNAL_TOKEN,
+        timeoutMs: 2000,
+      });
+  }
+
+  async getQueueStats(): Promise<{ queueServed30Days: number }> {
+    return this.client.get<{ queueServed30Days: number }>('/internal/stats?days=30');
+  }
+
+  async evictUserFromQueues(userId: string): Promise<void> {
+    await this.client.post('/internal/queue/evict', { userId });
+  }
+
+  async getQueueAnalytics(
+    businessId: string,
+    from: string,
+    to: string
+  ): Promise<{
+    queue: {
+      totalServed: number;
+      skipped: number;
+      left: number;
+      walkInCount: number;
+      onlineCount: number;
+      appointmentCount: number;
+    };
+    averageWaitMinutes: number | null;
+    medianWaitMinutes: number | null;
+    averageServiceMinutes: number | null;
+    estimateAccuracy: {
+      sampleSize: number;
+      meanAbsoluteErrorMinutes: number | null;
+    };
+    peakHours: Array<{ hour: number; count: number }>;
+    daily: Array<{ date: string; served: number; averageWaitMinutes: number | null }>;
+  }> {
+    return this.client.get(
+      `/internal/analytics/business/${encodeURIComponent(businessId)}/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    );
+  }
+
+  async getQueueToday(
+    businessId: string
+  ): Promise<{
+    waitingNow: number;
+    servedToday: number;
+    averageWaitMinutesToday: number | null;
+  }> {
+    return this.client.get(
+      `/internal/analytics/business/${encodeURIComponent(businessId)}/today`
+    );
+  }
+
+  async getQueueEntry(entryId: string): Promise<{
+    id: string;
+    business_id: string;
+    customer_id: string | null;
+    ticket_number: number;
+  } | null> {
+    try {
+      return await this.client.get(`/internal/queue/entries/${encodeURIComponent(entryId)}`);
+    } catch (err: any) {
+      if (err.statusCode === 404) return null;
+      throw err;
+    }
+  }
+}
+
+export const getQueuePort = (): QueuePort => {
+  if (config.QUEUE_MODE === 'service') {
+    return new HttpQueuePortAdapter();
+  }
+  return new QueuePortImpl();
+};
+
+export const queuePort: QueuePort = getQueuePort();

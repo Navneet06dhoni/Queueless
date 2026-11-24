@@ -1502,6 +1502,118 @@ registry.registerPath({
   },
 });
 
+// --- Internal Core API ---
+registry.registerPath({
+  method: 'get',
+  path: '/internal/businesses/{id}/queue-info',
+  tags: ['internal'],
+  summary: 'Internal endpoint to retrieve business queue status and working hours',
+  parameters: [
+    {
+      name: 'id',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+    },
+  ],
+  responses: {
+    200: {
+      description: 'Business queue info and today working hours',
+      content: {
+        'application/json': {
+          schema: z.object({
+            id: z.string().uuid(),
+            name: z.string(),
+            ownerId: z.string().uuid(),
+            status: z.string(),
+            workingHoursToday: z
+              .object({
+                openTime: z.string(),
+                closeTime: z.string(),
+              })
+              .nullable(),
+          }),
+        },
+      },
+    },
+    404: {
+      description: 'Business not found',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/internal/appointments/{id}/check-in-info',
+  tags: ['internal'],
+  summary: 'Internal endpoint to retrieve appointment check-in details',
+  parameters: [
+    {
+      name: 'id',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+    },
+  ],
+  responses: {
+    200: {
+      description: 'Appointment check-in details',
+      content: {
+        'application/json': {
+          schema: z.object({
+            id: z.string().uuid(),
+            customerId: z.string().uuid(),
+            businessId: z.string().uuid(),
+            status: z.string(),
+            slotStartTime: z.string(),
+          }),
+        },
+      },
+    },
+    404: {
+      description: 'Appointment not found',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/internal/auth/verify-token',
+  tags: ['internal'],
+  summary: 'Internal endpoint to verify customer or owner token and block status',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            token: z.string(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      description: 'Token verified successfully',
+      content: {
+        'application/json': {
+          schema: z.object({
+            userId: z.string().uuid(),
+            role: z.string(),
+            name: z.string(),
+          }),
+        },
+      },
+    },
+    401: {
+      description: 'Token invalid, expired, or user suspended',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
 // Export OpenApi Generator
 export const generateOpenApiSpec = () => {
   const generator = new OpenApiGeneratorV3(registry.definitions);

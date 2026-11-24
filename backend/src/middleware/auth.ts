@@ -15,6 +15,8 @@ declare global {
       user?: {
         id: string;
         role: UserRole;
+        name: string;
+        email: string | null;
       };
     }
   }
@@ -86,6 +88,8 @@ export const authenticate = async (req: Request, _res: Response, next: NextFunct
     req.user = {
       id: decoded.sub,
       role: decoded.role,
+      name: decoded.name !== undefined ? decoded.name : 'Customer',
+      email: decoded.email !== undefined ? decoded.email : null,
     };
     next();
   } catch (err: any) {
@@ -118,6 +122,8 @@ export const optionalAuthenticate = async (req: Request, _res: Response, next: N
       req.user = {
         id: decoded.sub,
         role: decoded.role,
+        name: decoded.name !== undefined ? decoded.name : 'Customer',
+        email: decoded.email !== undefined ? decoded.email : null,
       };
     }
   } catch {

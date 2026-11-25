@@ -1,0 +1,34 @@
+<USER_REQUEST>
+Phase 10d-3 review found gaps. Do Part A, then Part B. Stop after Part B.
+
+EVIDENCE RULE: run every command with `| Tee-Object -FilePath proof\<name>.txt` (create the proof folder, commit it) so the raw output exists as a file, then paste it unedited. Never retype, summarise or reconstruct output. If a command fails, paste the failure. If you cannot finish, print a status table (Done, Partial or Not started per item) and say what is left. Never reply with only progress messages.
+
+PART A: reconcile and prove 10d-3
+1. Test inventory: for every file in backend/tests and frontend/src/test print the filename and the real number of it( or test( calls. The last report listed admin, concurrency, edgeCases and rateLimiting as test files and listed 24 PASS lines with "Test Suites: 20". Explain where each of those four files came from (git log), and if any is a placeholder or near-empty, delete it. The frontend test file names in the last report do not match the real files (interceptor, date, protectedRoute, searchUrlSync, slotPicker, queue8b, queueSocketHook, ownerManage8c, admin8c, axeAccessibility8c, notificationsDegradation). Save the real `vitest run --reporter=verbose` output.
+2. Run `npm run verify` as `cmd /c "npm run verify > proof\verify.txt 2>&1"` and paste the Select-String summary of "Test Suites:", "Tests:", "Test Files" and "FAIL". The number of PASS lines must equal the number of suites.
+3. Missing tests from Part 0 of 10d-3: (a) a parity test that inserts the SAME queue_history data into the core database and queue_db and asserts that the monolith's in-process queue analytics (summary, today, stats) equal the queue service's internal endpoints number for number; (b) a contract test that every URL the HttpQueuePortAdapter calls exists as a route in the queue service OpenAPI spec. Show them passing.
+4. Proofs that were claimed but not shown: print the final QueuePort interface and the startup consumer-guard source; `Select-String -Path frontend\src,gateway -Pattern "/ws" -Recurse` (must find nothing); `docker image ls` and `docker history` for the queue service image; the 401 results for an unauthenticated /api/queue/me and /internal/stats on 127.0.0.1:3003; the output proving the machine's LAN IPv4 address on port 3003 is NOT reachable; `npm run copy:queue` run twice (the second must insert 0); and the output of scripts/test-rollback-embedded.ts.
+5. Fix the e2e scripts: e2e-notification prints "Appointment ID: undefined", so read the real response shape and assert the id exists. In the gateway smoke test, the spoofed-header check on /api/queue/me must use a real customer token plus spoofed admin headers and assert the response identity is still the customer's.
+
+PART B: frontend degradation and the three-way outage demo
+1. Frontend: when queue endpoints return 502 or 503 the live queue page shows "The queue service is temporarily unavailable, retrying", keeps the 15 second polling and reconnect logic, disables the Join button with that reason, and the global queue banner hides itself. At most one toast per minute. Add tests.
+2. `npm run demo:queue-outage` (stack up, fresh data, MailHog cleared), printing PASS or FAIL with exact numbers, no "at least":
+   (a) NOTIFICATION service down: queue operations continue, notification.q buffers exactly the expected number of messages, drains to 0 after restart, and exactly the expected number of emails arrive in MailHog.
+   (b) QUEUE service down: the core still serves business, booking and admin APIs; the core's analytics summary returns 200 with partial: true; the queue endpoints through the gateway return the JSON UPSTREAM_UNAVAILABLE body quickly; after restart the positions are identical to before the stop (rebuilt from queue_db) and sockets reconnect.
+   (c) CORE down (stop the monolith process): the public queue status route still works through the gateway; a socket connected before the outage keeps receiving updates when an owner action is sent directly to the queue service on 127.0.0.1:3003 with the internal token and identity headers; authenticated requests through the gateway fail fast with JSON UPSTREAM_UNAVAILABLE and do not hang.
+3. docs/ARCHITECTURE.md: add a failure-behaviour table (core down, queue down, notification down, RabbitMQ down) and state honestly that the core is currently a hard dependency for authentication (every authenticated request is verified by the core), which is the reason to extract Auth later.
+4. Print the status table and stop.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-25T12:09:23+05:30.
+
+The user's current state is as follows:
+Active Document: d:\QueueLess\backend\src\modules\auth\auth.service.ts (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 1
+Other open documents:
+- d:\QueueLess\backend\src\app.ts (LANGUAGE_UNSPECIFIED)
+- d:\QueueLess\backend\src\db\seed.ts (LANGUAGE_UNSPECIFIED)
+- d:\QueueLess\backend\src\middleware\validate.ts (LANGUAGE_UNSPECIFIED)
+- d:\QueueLess\backend\tests\schema.test.ts (LANGUAGE_UNSPECIFIED)
+- d:\QueueLess\backend\src\modules\auth\auth.controller.ts (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>

@@ -33,6 +33,7 @@
     "e2e:notification": "tsx scripts/e2e-notification.ts",
     "e2e:queue": "tsx scripts/e2e-queue.ts",
     "demo:notification-outage": "tsx scripts/demo-notification-outage.ts",
+    "demo:queue-outage": "tsx scripts/demo-queue-outage.ts",
     "gateway:lint": "docker compose exec -T gateway nginx -t",
     "test:gateway": "tsx scripts/gateway-smoke.ts",
     "test:services": "npm --prefix services/notification-service test && npm --prefix services/queue-service test",

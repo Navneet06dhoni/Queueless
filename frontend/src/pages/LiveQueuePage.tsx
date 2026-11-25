@@ -6,6 +6,7 @@ import { useQueueSocket } from '../hooks/useQueueSocket';
 import { useToast } from '../components/ui/Toast';
 import { formatTime } from '../utils/date';
 import { playNotificationChime } from '../utils/sound';
+import { notifyQueueOutageThrottled } from '../utils/toastThrottle';
 import {
   Card,
   Badge,
@@ -57,12 +58,26 @@ export const LiveQueuePage: React.FC = () => {
   }, []);
 
   // Fetch active queue entry
-  const { data: queueData, isLoading, isError } = useQuery({
+  const { data: queueData, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['queue', 'me'],
     queryFn: () => queueApi.getMyActive(),
     retry: false,
-    refetchInterval: false,
+    refetchInterval: (query) => {
+      const status = (query.state.error as any)?.response?.status;
+      return status === 502 || status === 503 ? 15000 : false;
+    },
   });
+
+  const isOutage =
+    (error as any)?.response?.status === 502 ||
+    (error as any)?.response?.status === 503 ||
+    (error as any)?.response?.data?.error?.code === 'UPSTREAM_UNAVAILABLE';
+
+  useEffect(() => {
+    if (isOutage) {
+      notifyQueueOutageThrottled(toast);
+    }
+  }, [isOutage, toast]);
 
   const businessId = queueData?.businessId || null;
 
@@ -137,6 +152,25 @@ export const LiveQueuePage: React.FC = () => {
       <div className="max-w-2xl mx-auto px-4 py-12 space-y-6">
         <Skeleton className="h-10 w-1/3 mx-auto" />
         <Skeleton className="h-64 w-full rounded-3xl" />
+      </div>
+    );
+  }
+
+  // Queue service outage degradation
+  if (isOutage) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16" data-testid="queue-outage-state">
+        <EmptyState
+          icon={<WifiOff className="w-12 h-12 text-amber-500 animate-pulse motion-reduce:animate-none" />}
+          title="The queue service is temporarily unavailable, retrying"
+          description="We are experiencing temporary connectivity issues with the live queue service. The system is automatically retrying every 15 seconds."
+          action={
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="w-4 h-4" />
+              <span>Retry Now</span>
+            </Button>
+          }
+        />
       </div>
     );
   }

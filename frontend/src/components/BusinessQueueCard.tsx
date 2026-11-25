@@ -24,20 +24,35 @@ export const BusinessQueueCard: React.FC<BusinessQueueCardProps> = ({ businessId
   useQueueSocket(businessId);
 
   // Fetch public queue status
-  const { data: queueStatus, isLoading } = useQuery({
+  const { data: queueStatus, isLoading, error: statusError } = useQuery({
     queryKey: ['queue', 'status', businessId],
     queryFn: () => queueApi.getPublicStatus(businessId),
-    refetchInterval: false,
+    refetchInterval: (query) => {
+      const s = (query.state.error as any)?.response?.status;
+      return s === 502 || s === 503 ? 15000 : false;
+    },
   });
 
   // Check if customer already in active queue
   const isCustomer = user?.role === 'customer';
-  const { data: myQueue } = useQuery({
+  const { data: myQueue, error: myQueueError } = useQuery({
     queryKey: ['queue', 'me'],
     queryFn: () => queueApi.getMyActive(),
     enabled: isCustomer,
     retry: false,
+    refetchInterval: (query) => {
+      const s = (query.state.error as any)?.response?.status;
+      return s === 502 || s === 503 ? 15000 : false;
+    },
   });
+
+  const isOutage =
+    (statusError as any)?.response?.status === 502 ||
+    (statusError as any)?.response?.status === 503 ||
+    (statusError as any)?.response?.data?.error?.code === 'UPSTREAM_UNAVAILABLE' ||
+    (myQueueError as any)?.response?.status === 502 ||
+    (myQueueError as any)?.response?.status === 503 ||
+    (myQueueError as any)?.response?.data?.error?.code === 'UPSTREAM_UNAVAILABLE';
 
   const alreadyInQueue = !!myQueue && (myQueue.status === 'waiting' || myQueue.status === 'called');
 
@@ -69,7 +84,9 @@ export const BusinessQueueCard: React.FC<BusinessQueueCardProps> = ({ businessId
 
   // Determine disable reason
   let disableReason = '';
-  if (!isOpen) {
+  if (isOutage) {
+    disableReason = 'The queue service is temporarily unavailable, retrying';
+  } else if (!isOpen) {
     disableReason = 'Queue is closed';
   } else if (alreadyInQueue) {
     disableReason = 'You are already in an active queue';
@@ -140,7 +157,7 @@ export const BusinessQueueCard: React.FC<BusinessQueueCardProps> = ({ businessId
             variant="primary"
             size="sm"
             className="w-full justify-center"
-            disabled={!isOpen || alreadyInQueue || joinMutation.isPending}
+            disabled={isOutage || !isOpen || alreadyInQueue || joinMutation.isPending}
             isLoading={joinMutation.isPending}
             onClick={handleJoinClick}
             title={disableReason}

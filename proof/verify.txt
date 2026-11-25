@@ -1,0 +1,704 @@
+
+> queueless@1.0.0 verify
+> npm --prefix backend run docs:export && npm --prefix packages/contracts test && npm --prefix packages/common test && npm --prefix packages/messaging test && npm --prefix services/notification-service test && npm --prefix services/queue-service test && npm --prefix backend test && npm run gateway:lint && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix backend run build && npm --prefix frontend run build
+
+
+> queueless-backend@1.0.0 docs:export
+> tsx scripts/export-openapi.ts
+
+✅ OpenAPI 3.0 spec successfully exported to D:\QueueLess\docs\openapi.json
+
+> @queueless/contracts@1.0.0 test
+> jest
+
+PASS tests/contracts.test.ts
+  @queueless/contracts
+    √ validates a valid booking.confirmed event publish (31 ms)
+    √ rejects an invalid booking.confirmed event on consume (51 ms)
+    √ validates both shapes of queue.joined (with and without customerName/customerEmail) (4 ms)
+    √ validates both shapes of queue.advanced (with and without customerName/customerEmail) (2 ms)
+    √ validates the REST error response envelope schema (1 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        3.511 s
+Ran all test suites.
+
+> @queueless/common@1.0.0 test
+> jest
+
+PASS tests/common.test.ts (5.575 s)
+  ● Console
+
+    console.error
+      Configuration validation failed: { _errors: [], REQUIRED_VAL: { _errors: [ 'Required' ] } }
+
+    [0m [90m 4 |[39m   [36mconst[39m parsed [33m=[39m schema[33m.[39msafeParse(env)[33m;[39m
+     [90m 5 |[39m   [36mif[39m ([33m![39mparsed[33m.[39msuccess) {
+    [31m[1m>[22m[39m[90m 6 |[39m     console[33m.[39merror([32m'Configuration validation failed:'[39m[33m,[39m parsed[33m.[39merror[33m.[39mformat())[33m;[39m
+     [90m   |[39m             [31m[1m^[22m[39m
+     [90m 7 |[39m     [36mthrow[39m [36mnew[39m [33mError[39m([32m`Configuration validation error: ${JSON.stringify(parsed.error.issues)}`[39m)[33m;[39m
+     [90m 8 |[39m   }
+     [90m 9 |[39m   [36mreturn[39m parsed[33m.[39mdata[33m;[39m[0m
+
+      at loadConfig (src/config.ts:6:13)
+      at tests/common.test.ts:125:30
+      at Object.<anonymous> (../../node_modules/expect/build/toThrowMatchers.js:74:11)
+      at Object.throwingMatcher [as toThrow] (../../node_modules/expect/build/index.js:320:21)
+      at Object.<anonymous> (tests/common.test.ts:125:44)
+
+PASS tests/internalClient.test.ts (8.572 s)
+
+Test Suites: 2 passed, 2 total
+Tests:       14 passed, 14 total
+Snapshots:   0 total
+Time:        9.933 s
+Ran all test suites.
+
+> @queueless/messaging@1.0.0 test
+> jest
+
+PASS tests/messaging.test.ts
+  @queueless/messaging unit tests
+    OUTBOX_MIGRATION_SQL
+      √ exports SQL statements creating outbox_events and processed_events (6 ms)
+    EventBus in-process
+      √ publishes and receives in-process events (8 ms)
+    OutboxRepository (generic with mock DbExecutor)
+      √ creates and claims outbox events via mock executor (4 ms)
+    OutboxRelay
+      √ drains pending rows and invokes publishEvent (2 ms)
+    RabbitMQClient constants
+      √ exports topology constants and client constructor (1 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        4.89 s
+Ran all test suites.
+
+> notification-service@1.0.0 test
+> jest --runInBand --detectOpenHandles --forceExit
+
+PASS tests/notification-service.test.ts (10.79 s)
+  Notification Service Suite
+    Event Handlers
+      √ handles booking.confirmed: creates notification for customer and owner (133 ms)
+      √ handles booking.cancelled: customer cancelled -> owner notified (33 ms)
+      √ handles booking.cancelled: owner cancelled -> customer notified with email (50 ms)
+      √ handles booking.rescheduled: notifies customer (36 ms)
+      √ handles business.status_changed: notifies owner (34 ms)
+      √ handles queue.advanced: notifies customer of queue progress (30 ms)
+      √ handles queue.advanced: near once, next once, called once with dedupe keys and no duplication on repeat (102 ms)
+      √ handles queue.advanced: falls back to "Customer" and skips email when customerName and customerEmail are missing (32 ms)
+      √ handles appointment.reminder_due: sends upcoming appointment reminder (42 ms)
+    Idempotency & Deduplication
+      √ processing duplicate event with same dedupeKey does not insert duplicate rows (57 ms)
+    Email Retries and Failure
+      √ records status failed and last_error when email transport fails 3 times (71 ms)
+    XSS Prevention
+      √ escapes HTML special characters in customer input (14 ms)
+      √ bookingConfirmedCustomer template safely escapes user payload (11 ms)
+    Transactional Outbox
+      √ sendNotification creates outbox row with notification.created event (28 ms)
+      √ notification.created is published after commit and NOT published when the transaction rolls back (63 ms)
+    Consumer DLQ & Poison Message Handling
+      √ an invalid or poison payload sent to the service consumer ends in the DLQ after 3 attempts (4500 ms)
+    Database Test Setup Safety Guard
+      √ refuses to run unless the database name ends with _test (36 ms)
+    REST Endpoints & Authentication
+      √ rejects requests without X-Internal-Token with 401 (101 ms)
+      √ rejects requests with invalid X-Internal-Token with 401 (39 ms)
+      √ rejects requests missing X-User-Id with 401 (34 ms)
+      √ returns user notifications when valid token and identity provided (105 ms)
+      √ marks notification as read (64 ms)
+      √ user cannot mark another user notification as read (returns 404) (36 ms)
+      √ marks all notifications as read (45 ms)
+      √ non-admin accessing /api/admin/notifications is rejected with 403 (42 ms)
+      √ admin accessing /api/admin/notifications succeeds (37 ms)
+    OpenAPI Route Contract Coverage
+      √ all registered service routes match OpenAPI specification (26 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       27 passed, 27 total
+Snapshots:   0 total
+Time:        11.297 s, estimated 13 s
+Ran all test suites.
+
+> queue-service@1.0.0 test
+> jest --runInBand --detectOpenHandles --forceExit
+
+PASS tests/queue-service.test.ts (15.557 s)
+  Queue Service Suite
+    Database Test Setup Safety Guard
+      √ refuses to run unless the database name ends with _test (364 ms)
+    Ported Queue & Hybrid Check-in Tests
+      √ join order and ticket numbers are sequential per business (416 ms)
+      √ duplicate join returns 409 (also across different businesses) (276 ms)
+      √ CONCURRENCY: 30 simultaneous joins give positions 1 to 30 and ZCARD 30 (1955 ms)
+      √ CONCURRENCY: 10 simultaneous joins by one customer give exactly one success (449 ms)
+      √ FIFO & Calling Next with Auto-Completion (353 ms)
+      √ CONCURRENCY: two simultaneous /next calls never call the same customer (330 ms)
+      √ hybrid check-in rule with clock override (09:55 behind 09:50 walk-in, ahead of 10:05 walk-in, rejected at 09:40 and 10:20) (295 ms)
+      √ leave removes entry and decreases positions of entries behind (354 ms)
+      √ skip with requeue puts customer at the end with new score (529 ms)
+      √ estimated wait calculation = position x rolling average (179 ms)
+      √ rebuild after FLUSHDB gives the same order and positions (444 ms)
+      √ rebuild lock: two concurrent calls run once (198 ms)
+    New Microservice Queue Features & Sockets
+      √ socket privacy: no customer ever receives another customer name or id (495 ms)
+      √ socket handshake rejects a blocked or invalid token (231 ms)
+      √ user.blocked evicts user from queues and disconnects user sockets (396 ms)
+      √ stale-if-error: when core is down, cached business info serves join; fails with 503 if no cache (221 ms)
+      √ circuit breaker opens after repeated failures and fast-fails subsequent calls (206 ms)
+      √ queue.advanced carries customerName and customerEmail in outbox (304 ms)
+      √ notification.created reaches only the right user socket (380 ms)
+      √ identity header and internal token checks (193 ms)
+      √ internal analytics endpoints return exact data shapes (223 ms)
+      √ OpenAPI route contract coverage (137 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       23 passed, 23 total
+Snapshots:   0 total
+Time:        16.206 s, estimated 18 s
+Ran all test suites.
+
+> queueless-backend@1.0.0 test
+> jest --runInBand --detectOpenHandles --forceExit
+
+🔄 Checking database migrations...
+✨ All migrations are up to date.
+✨ All migrations successfully applied to "queueless_test".
+
+PASS tests/business.test.ts (37.504 s)
+  Businesses, Services, Working Hours and Slots Module
+    Business Creation & Ownership Restrictions
+      √ owner creates a business with status pending; customer cannot create one (403) (3773 ms)
+      √ another owner cannot edit, add services, set hours or generate slots for someone else business (403) (3508 ms)
+    Public Business Listing, Search, Filters & Pagination
+      √ shows only approved businesses, excluding pending ones (3486 ms)
+      √ filters by city and category correctly (3259 ms)
+      √ searches by keyword with LIKE escaping and handles pagination (3576 ms)
+    Working Hours Validation
+      √ rejects close_time before or equal to open_time, and rejects duplicate days (3479 ms)
+    Slot Generation & Timezone Handling
+      √ generates correct slot count for a day (9:00 to 17:00 with 30m duration gives 16), converts IST to UTC, is idempotent, and rejects > 30 days (3844 ms)
+    Service Deletion with Booked Slot Protection
+      √ deleting a service with a booked slot returns 409; free service deletes cleanly (3517 ms)
+    Admin Business Approval & Redis Cache Invalidation
+      √ admin approves business and it immediately appears in public list; cache invalidation verified (3622 ms)
+
+  console.log
+    [RACE TALLY] 201 Created: 10, 409 Conflict: 10 (Total: 20)
+
+      at Object.<anonymous> (tests/booking.test.ts:545:15)
+
+PASS tests/booking.test.ts (23.847 s)
+  Booking & Concurrency-Safe Locking Module
+    Basic Booking & Double-Booking Protection
+      √ customer books a free slot (201), slot becomes booked; second customer gets 409 (1294 ms)
+      √ rejects past slots (400), pending business slots (404), and owner booking (403) (1399 ms)
+      √ rejects overlapping appointments for the same customer (409) (1098 ms)
+    Concurrency Stress Testing
+      √ CONCURRENCY: 50 customers fire simultaneous POST /appointments for the SAME slot -> exactly one 201, 49 409s, zero 500s (2568 ms)
+      √ CONCURRENCY ON DIFFERENT SLOTS: 20 customers simultaneously book 20 different slots -> all succeed (1626 ms)
+    Cancellation, Cutoff Rules & Partial Index Re-booking
+      √ customer A books, cancels (slot becomes free), customer B books the same slot successfully (1319 ms)
+      √ cancellation inside cutoff window returns 409 for customer but succeeds for owner (1109 ms)
+    Rescheduling & Deadlock Protection
+      √ reschedules appointment atomically and flips both slot statuses (1120 ms)
+      √ RESCHEDULE RACE: two customers try to reschedule onto the same free slot simultaneously; exactly one succeeds (1371 ms)
+      √ DEADLOCK CHECK: two customers swap into each other slots simultaneously; finishes cleanly without deadlock or 500 (1329 ms)
+      √ RACE: customer A cancels while customer B books the same slot at the same moment (20 times in a loop) (3480 ms)
+    Owner Appointment Management & Event Publishing
+      √ owner marks completed and no_show correctly, and cannot mark a future appointment (2782 ms)
+      √ events: booking.confirmed and booking.cancelled are published exactly once after commit (1107 ms)
+      √ owner views daily appointments list with customer name and slot details (1139 ms)
+
+PASS tests/auth.test.ts (22.391 s)
+  Auth Module Integration Tests
+    POST /api/auth/register
+      √ should register a new customer successfully and return 201 with user and tokens (1015 ms)
+      √ should return 409 if email is already registered (1012 ms)
+      √ should reject admin role with 400 validation error (397 ms)
+      √ should reject weak password (< 8 chars or no numbers/letters) with 400 (488 ms)
+    POST /api/auth/login
+      √ should login successfully with correct credentials and return 200 with tokens (1621 ms)
+      √ should return identical 401 error message for wrong password and unknown email to prevent enumeration (1396 ms)
+      √ per-email lockout: 10 failures from IP A lock out IP A, but do not lock out IP B for the same email (8286 ms)
+    GET /api/auth/me
+      √ should return 401 without an Authorization token (1042 ms)
+      √ should return 200 with current user when a valid access token is provided (1037 ms)
+    GET /api/auth/verify
+      √ should return 200 with X-User-Id, X-User-Role, X-User-Name, and X-User-Email headers (1016 ms)
+      √ should accept legacy old token without name and email claims (fallback name Customer, email null) (298 ms)
+    POST /api/auth/refresh and rotation security
+      √ should rotate refresh token and issue a new one (956 ms)
+    POST /api/auth/logout
+      √ should revoke refresh token on logout (984 ms)
+    requireRole middleware
+      √ should return 403 when user does not have the required role (1566 ms)
+
+PASS tests/queue.test.ts (13.689 s)
+  Live Virtual Queue & Hybrid Check-in Module
+    Basic Join, Duplicate Rules & Ticket Ordering
+      √ join gives position 1, second customer gets position 2, and ticket numbers increase per day (576 ms)
+      √ a customer joining twice gets 409, and a customer already in business A queue gets 409 for business B (479 ms)
+    Concurrency Stress Testing
+      √ CONCURRENCY: 30 customers join the same business simultaneously -> positions 1 to 30, no duplicates, ZCARD = 30 (2897 ms)
+      √ CONCURRENCY: the same customer fires 10 simultaneous joins, and exactly one succeeds with one row in queue_history (894 ms)
+    FIFO & Calling Next with Auto-Completion
+      √ FIFO: next calls customers in join order, and next auto-completes the previous entry (839 ms)
+      √ CONCURRENCY: two simultaneous POST /next calls call two different customers, never the same one (640 ms)
+    Hybrid Queue Rules with Appointments and Clock Override
+      √ hybrid rule: an appointment at 10:00 that checks in at 09:55 is behind a walk-in who joined at 09:50, ahead of a walk-in who joined at 10:05, rejected at 09:40 (too early), and rejected at 10:20 (too late) (839 ms)
+    Leave, Skip & Estimated Wait Calculation
+      √ leave removes the entry and the positions of people behind decrease (776 ms)
+      √ estimated wait equals position x the rolling average (with history entries of known durations) (563 ms)
+      √ skip with requeue puts the entry at the end (647 ms)
+    Rebuild Queues Idempotency
+      √ rebuildQueues: flush Redis, call rebuild, and the order and positions are identical (546 ms)
+    Authorization & Working Hours Restrictions
+      √ an owner of another business gets 403 on next, a customer gets 403, and a closed queue gets 409 (449 ms)
+      √ returns 409 on join outside working hours (313 ms)
+    Socket.io Real-Time Events & Privacy Protection
+      √ unauthenticated socket is rejected; customer receives live position and called events; privacy is preserved (729 ms)
+      √ events: queue.advanced carries the correct upcoming list (793 ms)
+
+PASS tests/notification.test.ts (6.799 s)
+  Notification Module Integration Tests
+    Booking Event Notifications & Deduplication
+      √ booking confirmed: customer has 1 in-app notification and 1 email, owner has 1 in-app notification (500 ms)
+      √ publishing the SAME eventId twice creates exactly one row per user and one email (418 ms)
+      √ cancel by customer notifies the owner; cancel by owner notifies customer and sends an email (356 ms)
+    Queue Stages Notifications
+      √ queue stages: moving from 5 to 3 gets "near" once, repeated events at 3 do not repeat, position 1 gives "next" once, called gives "called" once, walk-in produces nothing (412 ms)
+    Email Retries, Failures & HTTP Resilience
+      √ email failing twice then succeeding ends as "sent" with email_attempts 3 (352 ms)
+      √ always failing ends as "failed" with last_error and in-app notification still exists (360 ms)
+      √ RESILIENCE: with email transport permanently failing, POST /appointments still returns 201 quickly (397 ms)
+    REST API & Admin Failed Delivery Listing
+      √ list, unreadCount, mark read, read-all, 404 on another user notification, admin failed list and customer 403 (554 ms)
+    Appointment Reminder Background Job
+      √ appointment 30 minutes away gets exactly 1 reminder; running twice or concurrently sends 1; appointment 3 hours away gets none (452 ms)
+    HTML Escaping & Socket.io Privacy
+      √ customer name containing <script> is escaped in the HTML email (385 ms)
+      √ socket: connected user receives notification:new when notified, and another user socket does not (556 ms)
+    Single-Consumer Guard & NOTIFICATIONS_MODE Switch
+      √ in NOTIFICATIONS_MODE=service, monolith registers no notification subscribers and mounts no notification routes (407 ms)
+      √ single-consumer guard: in embedded mode, refuses to start consumer if one is already attached and logs loud warning (315 ms)
+
+PASS tests/queuePort.test.ts
+  QueuePort & HttpQueuePortAdapter (Fail-Soft & Resilience)
+    √ HttpQueuePortAdapter: fetches stats when remote server is UP (56 ms)
+    √ HttpQueuePortAdapter: calls /internal/analytics/business/:id/summary and /internal/analytics/business/:id/today (50 ms)
+    √ Contract test: every URL HttpQueuePortAdapter calls exists as a route in queue service OpenAPI spec (10 ms)
+    √ Analytics parity: exact equality of numbers between monolith and queue service for identical data (218 ms)
+    √ AnalyticsRepository: fail-soft rule when queue service is UP (6 ms)
+    √ AnalyticsRepository: fail-soft rule when queue service is DOWN (queue fields become null, partial: true) (4 ms)
+    √ AnalyticsRepository: fail-soft rule when queue service is SLOW (>2s timeout) (2024 ms)
+
+PASS tests/rabbitmq.test.ts
+  RabbitMQ Transport Integration Tests
+    √ publish and consume: message published to queueless.events exchange is delivered to matching queue (538 ms)
+    √ (a) stop consumer, publish 20 events, restart consumer -> all 20 are processed exactly once (742 ms)
+    √ (b) invalid payload ends in DLQ after retries (535 ms)
+    √ (c) delivering the same eventId twice has the effect once (processed_events) (986 ms)
+    √ (d) the relay is killed after committing but before publishing, then restarted, and the consumer gets the event exactly once (1004 ms)
+
+PASS tests/schema.test.ts
+  Database Migration Schema Verification (Real PostgreSQL)
+    √ should successfully apply 001_initial_schema.sql and create all 8 core tables (459 ms)
+    √ should enforce unique constraint on users(email) (332 ms)
+    √ should enforce unique constraint on slots(service_id, start_time) (336 ms)
+    √ should enforce partial unique index on appointments(slot_id) allowing rebooking after cancellation (380 ms)
+    √ should successfully apply 002_refresh_tokens.sql and rollback (425 ms)
+    √ should successfully apply 003_business_search_indexes.sql and rollback (402 ms)
+    √ should successfully apply 004_appointments_partial_unique_index.sql and rollback (361 ms)
+    √ should successfully apply 005_queue_system.sql and rollback (404 ms)
+    √ should successfully apply 006_notifications_system.sql and rollback (330 ms)
+    √ should successfully apply 007_analytics_and_admin.sql and rollback (396 ms)
+    √ should successfully rollback using 001_initial_schema.down.sql (366 ms)
+
+  console.log
+    ⚡ Inserting 10,000 rows for analytics performance benchmark...
+
+      at Object.<anonymous> (tests/analytics.test.ts:411:15)
+
+  console.log
+    ⏱️ Summary query on 10,000 rows executed in: 210 ms
+
+      at Object.<anonymous> (tests/analytics.test.ts:435:15)
+
+PASS tests/analytics.test.ts (5.001 s)
+  Analytics & Admin Module (Real Postgres & Redis)
+    Owner Analytics Summary with Known Values
+      √ asserts exact summary calculations: totalServed, avg/median wait, avg service, noShowRate, slot utilization, and source counts (104 ms)
+      √ estimateAccuracy: compares estimated vs actual wait and gives exact Mean Absolute Error (75 ms)
+      √ peakHours has 24 entries and timezone check (10:30 IST = 05:00 UTC puts entry in hour 10); daily array includes zero days (82 ms)
+    Validation & Authorization Restrictions
+      √ returns 400 when range exceeds 90 days or to is before from (59 ms)
+      √ returns 403 for another owner, 403 for customer, 404 for unknown business, and allows admin for any business (161 ms)
+    Caching & Freshness
+      √ summary is cached in Redis for 60s (subsequent call does not hit DB), and /today is uncached (157 ms)
+    CSV Export & Formula Injection Prevention
+      √ returns text/csv with attachment header and escapes values starting with = (72 ms)
+    Performance Sanity Benchmark
+      √ computes summary on 10,000 queue_history rows in under 500 ms (1070 ms)
+    Admin Platform Stats, User Management & Audit Log
+      √ GET /api/admin/stats returns users, businesses, appointments, queue served and 30 daily entries (112 ms)
+      √ GET /api/admin/users supports search, filters, pagination and omits password_hash (47 ms)
+      √ BLOCK & UNBLOCK: login 403, immediate token rejection, refresh 403, slot freed, audit logged, unblock restores access (456 ms)
+      √ an admin cannot block themselves or another admin (403), and non-admin gets 403 (57 ms)
+      √ records audit log on business approval (120 ms)
+    Queue Entry Stores estimated_wait_minutes
+      √ stores estimated_wait_minutes in queue_history when customer joins queue (138 ms)
+
+PASS tests/internalApi.test.ts
+  Internal Core API (/internal)
+    Authentication & Security
+      √ returns 401 when X-Internal-Token header is missing (27 ms)
+      √ returns 401 when X-Internal-Token header is invalid (21 ms)
+    GET /internal/businesses/:id/queue-info
+      √ returns 404 for unknown business id (30 ms)
+      √ returns business queue info with today working hours (34 ms)
+    GET /internal/appointments/:id/check-in-info
+      √ returns 404 for unknown appointment id (44 ms)
+      √ returns appointment check-in details (26 ms)
+    POST /internal/auth/verify-token
+      √ returns 401 when token is missing from body (36 ms)
+      √ returns 401 when token is invalid or malformed (21 ms)
+      √ returns 401 when token belongs to a blocked user (27 ms)
+      √ returns user identity { userId, role, name } for valid token (28 ms)
+
+PASS tests/debugEndpoint.test.ts
+  Debug Endpoint Mount & Security (/internal/debug/client-ip)
+    √ Normal development run (NODE_ENV=development, DEBUG_ENDPOINTS=false): returns 404 (121 ms)
+    √ Production run (NODE_ENV=production, DEBUG_ENDPOINTS=false): returns 404 (105 ms)
+    √ DEBUG_ENDPOINTS=true: requires internal token (returns 401 without token) (70 ms)
+    √ DEBUG_ENDPOINTS=true: returns 200 with client IP details when valid token provided (62 ms)
+    √ NODE_ENV=test: returns 401 without token and 200 with token (91 ms)
+
+PASS tests/health.test.ts
+  App Scaffolding, Health Checks & Probes
+    √ GET / should return basic service info and documentation link (26 ms)
+    √ GET /api/health/live should respond with 200 and process uptime (32 ms)
+    √ GET /api/health/ready should respond with 200 when DB and Redis are up (94 ms)
+    √ GET /api/health/ready should respond with 503 when Redis check fails (41 ms)
+    √ GET /api/health should respond with backward-compatible 200 and dependency status (34 ms)
+    √ GET /api/non-existent-route should return consistent 404 error format with requestId (20 ms)
+
+PASS tests/observability.test.ts
+  Observability & Security Logging
+    Request ID Middleware
+      √ generates a new UUID when X-Request-Id is not provided (29 ms)
+      √ honors valid incoming X-Request-Id header (25 ms)
+      √ includes requestId in error response body (28 ms)
+    Logger Redaction
+      √ redacts sensitive authorization headers, bearer tokens, cookies, and passwords (5 ms)
+
+PASS tests/config.test.ts
+  Configuration & Cancellation Cutoff API
+    √ GET /api/config should expose cancellationCutoffMinutes and check-in window policies (34 ms)
+    √ cancellationCutoffMinutes is dynamically bound to config.CANCELLATION_CUTOFF_MINUTES (17 ms)
+
+PASS tests/shutdown.test.ts
+  Graceful Shutdown
+    √ executes graceful shutdown cleanly without hanging or unhandled rejections (239 ms)
+
+PASS tests/queueMode.test.ts
+  Monolith Architecture Modes (QUEUE_MODE & Startup Guards)
+    √ QUEUE_MODE=service: /api/queue routes are NOT mounted (returns 404) (132 ms)
+    √ QUEUE_MODE=embedded: /api/queue routes ARE mounted (120 ms)
+    √ Startup guard: refuses to attach duplicate consumer if queue.q already has consumers (5 ms)
+    √ Startup guard: refuses to attach duplicate consumer if socket.q already has consumers (4 ms)
+
+PASS tests/outbox.test.ts
+  Transactional Outbox Pattern & Atomicity
+    √ outbox atomicity: rolled back transaction produces no outbox row and no notification (69 ms)
+    √ outbox atomicity: committed transaction writes pending row, relay publishes and notifies (93 ms)
+    √ crash safety: relay mid-batch recovery processes remaining events without duplicates (294 ms)
+
+PASS tests/openapi.test.ts
+  OpenAPI Contract Test
+    √ validates 100% bidirectional coverage between Express routes and OpenAPI documentation (5 ms)
+
+PASS tests/userBlocked.test.ts
+  user.blocked Decoupled Dual Consumption
+    √ admin blocks user: booking module cancels appointments and queue module evicts from queues via user.blocked event (234 ms)
+
+PASS tests/architecture.test.ts
+  Architecture & Module Boundary Tests
+    √ no module should import another module repository directly (29 ms)
+    √ no module should execute direct SQL queries on another module tables (29 ms)
+    Shared Packages Architecture Boundaries
+      √ packages/* may never import anything from backend/* or services/* (25 ms)
+      √ packages dependencies adhere strictly to architectural constraints (3 ms)
+      √ packages/* contains no business domain table names other than outbox_events and processed_events (28 ms)
+    Notification Service Architecture Boundaries
+      √ notification-service must never import anything from backend/ (9 ms)
+      √ backend/src must never import anything from services/ (39 ms)
+    Queue Service Architecture Boundaries
+      √ queue-service must never import anything from backend/ or other services (9 ms)
+      √ queue service contains no SQL against users, businesses, appointments or slots (11 ms)
+
+Test Suites: 20 passed, 20 total
+Tests:       148 passed, 148 total
+Snapshots:   0 total
+Time:        136.595 s
+Ran all test suites.
+
+> queueless@1.0.0 gateway:lint
+> docker compose exec -T gateway nginx -t
+
+time="2026-11-25T12:20:47+05:30" level=warning msg="D:\\QueueLess\\docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+
+> queueless-frontend@1.0.0 lint
+> eslint .
+
+
+> queueless-frontend@1.0.0 test
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.1.1 [39m[90mD:/QueueLess/frontend[39m
+
+ [32m✓[39m src/test/queueSocketHook.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 92[2mms[22m[39m
+ [32m✓[39m src/test/interceptor.test.ts [2m([22m[2m2 tests[22m[2m)[22m[33m 512[2mms[22m[39m
+   [32m✓[39m Axios Interceptor & Single-Flight Refresh [2m(2)[22m
+     [33m[2m✓[22m[39m when 5 requests fail with 401 at the same time, /auth/refresh is called exactly once and all 5 requests are retried[33m 432[2mms[22m[39m
+ [32m✓[39m src/test/date.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+[90mstderr[2m | src/test/protectedRoute.test.tsx[2m > [22m[2mProtectedRoute component[2m > [22m[2mredirects an anonymous user to /login with a return URL
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ [32m✓[39m src/test/protectedRoute.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 200[2mms[22m[39m
+ [32m✓[39m src/test/auth.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 58[2mms[22m[39m
+[90mstderr[2m | src/test/searchUrlSync.test.tsx[2m > [22m[2mSearch URL Sync in BusinessSearchPage[2m > [22m[2mchanging a category filter updates the query string and resets page to 1
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ [32m✓[39m src/test/searchUrlSync.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 770[2mms[22m[39m
+   [32m✓[39m Search URL Sync in BusinessSearchPage [2m(2)[22m
+     [33m[2m✓[22m[39m changing a category filter updates the query string and resets page to 1[33m 702[2mms[22m[39m
+[90mstderr[2m | src/test/slotPicker.test.tsx[2m > [22m[2mSlot Picker & Booking flow in BusinessDetailPage[2m > [22m[2mrenders IST times from UTC input and disables non-free slots
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+[90mstderr[2m | src/test/ownerManage8c.test.tsx[2m > [22m[2mStep 8c Owner Management Tests[2m > [22m[2mcreate-business form validates and shows the pending banner after success
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+[90mstderr[2m | src/test/notificationsDegradation.test.tsx[2m > [22m[2mNotifications Service Graceful Degradation[2m > [22m[2mNavbar gracefully displays unavailable message on 502 without crashing
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+[90mstderr[2m | src/test/admin8c.test.tsx[2m > [22m[2mStep 8c Admin Panel & Governance Tests[2m > [22m[2mroute guards: customer cannot open /owner/manage or /admin, owner cannot open /admin, admin does not see /owner link
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ [32m✓[39m src/test/notificationsDegradation.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 657[2mms[22m[39m
+   [32m✓[39m Notifications Service Graceful Degradation [2m(3)[22m
+     [33m[2m✓[22m[39m Navbar gracefully displays unavailable message on 502 without crashing[33m 477[2mms[22m[39m
+ [32m✓[39m src/test/admin8c.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 1356[2mms[22m[39m
+   [32m✓[39m Step 8c Admin Panel & Governance Tests [2m(4)[22m
+     [33m[2m✓[22m[39m route guards: customer cannot open /owner/manage or /admin, owner cannot open /admin, admin does not see /owner link[33m 488[2mms[22m[39m
+     [33m[2m✓[22m[39m admin businesses: approve moves an item out of the pending list[33m 390[2mms[22m[39m
+     [33m[2m✓[22m[39m admin users: block requires a reason; block button is hidden for admins; blocked badge appears[33m 429[2mms[22m[39m
+ [32m✓[39m src/test/slotPicker.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 1502[2mms[22m[39m
+   [32m✓[39m Slot Picker & Booking flow in BusinessDetailPage [2m(2)[22m
+     [33m[2m✓[22m[39m renders IST times from UTC input and disables non-free slots[33m 880[2mms[22m[39m
+     [33m[2m✓[22m[39m refetches slots and shows friendly error on 409 slot taken[33m 615[2mms[22m[39m
+ [32m✓[39m src/test/ownerManage8c.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 1924[2mms[22m[39m
+   [32m✓[39m Step 8c Owner Management Tests [2m(5)[22m
+     [33m[2m✓[22m[39m create-business form validates and shows the pending banner after success[33m 451[2mms[22m[39m
+     [33m[2m✓[22m[39m service form limits: duration 4 and 481 rejected; delete shows the 409 message[33m 879[2mms[22m[39m
+     [33m[2m✓[22m[39m working hours editor rejects close before open, and "copy Monday to weekdays" fills Tuesday to Friday[33m 336[2mms[22m[39m
+[90mstderr[2m | src/test/queue8b.test.tsx[2m > [22m[2mStep 8b Live Queue, Customer & Owner Dashboard Tests[2m > [22m[2mthe queue page shows the position from /queue/me and updates when queue:position arrives, without a refetch
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+[90mstderr[2m | src/test/queue8b.test.tsx[2m > [22m[2mStep 8b Live Queue, Customer & Owner Dashboard Tests[2m > [22m[2mowner Call next button is disabled while pending and rapid clicks produce exactly one request; a 409 shows toast and no crash
+[22m[39mWarning: An update to ToastProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at ToastProvider (D:/QueueLess/frontend/src/components/ui/Toast.tsx:7:26)
+    at QueryClientProvider (file:///D:/QueueLess/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:41:32)
+
+[90mstderr[2m | src/test/queue8b.test.tsx[2m > [22m[2mStep 8b Live Queue, Customer & Owner Dashboard Tests[2m > [22m[2mowner Call next button is disabled while pending and rapid clicks produce exactly one request; a 409 shows toast and no crash
+[22m[39mWarning: An update to LiveQueueTab inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LiveQueueTab (D:/QueueLess/frontend/src/pages/owner/LiveQueueTab.tsx:29:25)
+    at Router (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1203:17)
+    at MemoryRouter (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1097:7)
+    at ToastProvider (D:/QueueLess/frontend/src/components/ui/Toast.tsx:7:26)
+    at QueryClientProvider (file:///D:/QueueLess/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:41:32)
+
+Not implemented: navigation to another Document
+ [32m✓[39m src/test/queue8b.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 1634[2mms[22m[39m
+   [32m✓[39m Step 8b Live Queue, Customer & Owner Dashboard Tests [2m(12)[22m
+     [33m[2m✓[22m[39m the join button is disabled with the right reason when queue is closed, when user already has an entry, and for owners it is hidden[33m 411[2mms[22m[39m
+[90mstderr[2m | src/test/axeAccessibility8c.test.tsx[2m > [22m[2mStep 8c Axe Accessibility Audits (Zero Serious/Critical Violations)[2m > [22m[2m1. LandingPage has no serious or critical accessibility violations
+[22m[39m⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+[90mstderr[2m | src/test/axeAccessibility8c.test.tsx[2m > [22m[2mStep 8c Axe Accessibility Audits (Zero Serious/Critical Violations)[2m > [22m[2m3. BusinessSearchPage has no serious or critical accessibility violations
+[22m[39mWarning: An update to BusinessSearchPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at BusinessSearchPage (D:/QueueLess/frontend/src/pages/BusinessSearchPage.tsx:26:84)
+    at Router (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1203:17)
+    at MemoryRouter (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1097:7)
+    at ToastProvider (D:/QueueLess/frontend/src/components/ui/Toast.tsx:7:26)
+    at QueryClientProvider (file:///D:/QueueLess/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:41:32)
+
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+[90mstderr[2m | src/test/axeAccessibility8c.test.tsx[2m > [22m[2mStep 8c Axe Accessibility Audits (Zero Serious/Critical Violations)[2m > [22m[2m5. LiveQueuePage has no serious or critical accessibility violations
+[22m[39mWarning: An update to LiveQueuePage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LiveQueuePage (D:/QueueLess/frontend/src/pages/LiveQueuePage.tsx:33:63)
+    at Router (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1203:17)
+    at MemoryRouter (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1097:7)
+    at ToastProvider (D:/QueueLess/frontend/src/components/ui/Toast.tsx:7:26)
+    at QueryClientProvider (file:///D:/QueueLess/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:41:32)
+
+[90mstderr[2m | src/test/axeAccessibility8c.test.tsx[2m > [22m[2mStep 8c Axe Accessibility Audits (Zero Serious/Critical Violations)[2m > [22m[2m6. OwnerDashboardPage has no serious or critical accessibility violations
+[22m[39mWarning: An update to OwnerDashboardPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OwnerDashboardPage (D:/QueueLess/frontend/src/pages/owner/OwnerDashboardPage.tsx:26:71)
+    at Router (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1203:17)
+    at MemoryRouter (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1097:7)
+    at ToastProvider (D:/QueueLess/frontend/src/components/ui/Toast.tsx:7:26)
+    at QueryClientProvider (file:///D:/QueueLess/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:41:32)
+
+[90mstderr[2m | src/test/axeAccessibility8c.test.tsx[2m > [22m[2mStep 8c Axe Accessibility Audits (Zero Serious/Critical Violations)[2m > [22m[2m6. OwnerDashboardPage has no serious or critical accessibility violations
+[22m[39mWarning: An update to OwnerDashboardPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OwnerDashboardPage (D:/QueueLess/frontend/src/pages/owner/OwnerDashboardPage.tsx:26:71)
+    at Router (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1203:17)
+    at MemoryRouter (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1097:7)
+    at ToastProvider (D:/QueueLess/frontend/src/components/ui/Toast.tsx:7:26)
+    at QueryClientProvider (file:///D:/QueueLess/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:41:32)
+
+[90mstderr[2m | src/test/axeAccessibility8c.test.tsx[2m > [22m[2mStep 8c Axe Accessibility Audits (Zero Serious/Critical Violations)[2m > [22m[2m7. AdminOverviewTab has no serious or critical accessibility violations
+[22m[39mWarning: An update to AdminOverviewTab inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at AdminOverviewTab (D:/QueueLess/frontend/src/pages/admin/tabs/AdminOverviewTab.tsx:35:87)
+    at Router (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1203:17)
+    at MemoryRouter (D:\QueueLess\node_modules\react-router\dist\umd\react-router.development.js:1097:7)
+    at ToastProvider (D:/QueueLess/frontend/src/components/ui/Toast.tsx:7:26)
+    at QueryClientProvider (file:///D:/QueueLess/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:41:32)
+
+ [32m✓[39m src/test/axeAccessibility8c.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 1017[2mms[22m[39m
+   [32m✓[39m Step 8c Axe Accessibility Audits (Zero Serious/Critical Violations) [2m(7)[22m
+     [33m[2m✓[22m[39m 1. LandingPage has no serious or critical accessibility violations[33m 496[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m12 passed[39m[22m[90m (12)[39m
+[2m      Tests [22m [1m[32m52 passed[39m[22m[90m (52)[39m
+[2m   Start at [22m 12:20:58
+[2m   Duration [22m 22.96s[2m (import 51%, environment 34%, setup 8%, tests 5%, transform 1%)[22m
+
+
+> queueless-backend@1.0.0 build
+> tsc
+
+
+> queueless-frontend@1.0.0 build
+> tsc && vite build
+
+[36mvite v6.4.6 [32mbuilding for production...[36m[39m
+transforming...
+[33mnode_modules/zod/v4/core/regexes.js (74:0): A comment
+
+"/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+ * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+ * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+
+in "node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.[39m
+[33mnode_modules/zod/v4/core/util.js (400:0): A comment
+
+"// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+
+in "node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.[39m
+[32m✓[39m 2610 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                             [39m[1m[2m  1.43 kB[22m[1m[22m[2m │ gzip:   0.63 kB[22m
+[2mdist/[22m[35massets/index-pOyzY2JU.css              [39m[1m[2m 46.07 kB[22m[1m[22m[2m │ gzip:   8.05 kB[22m
+[2mdist/[22m[36massets/circle-x-7Yjvy1Me.js            [39m[1m[2m  0.69 kB[22m[1m[22m[2m │ gzip:   0.36 kB[22m
+[2mdist/[22m[36massets/toggle-right-BRUKo6KQ.js        [39m[1m[2m  0.71 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
+[2mdist/[22m[36massets/building-CQmMSJDF.js            [39m[1m[2m  0.72 kB[22m[1m[22m[2m │ gzip:   0.38 kB[22m
+[2mdist/[22m[36massets/LiveQueuePage-D8ltQ9a7.js       [39m[1m[2m 11.24 kB[22m[1m[22m[2m │ gzip:   3.86 kB[22m
+[2mdist/[22m[36massets/vendor-router-B4sd_1W1.js       [39m[1m[2m 21.34 kB[22m[1m[22m[2m │ gzip:   7.94 kB[22m
+[2mdist/[22m[36massets/OwnerDashboardPage--xhr28-g.js  [39m[1m[2m 26.95 kB[22m[1m[22m[2m │ gzip:   7.46 kB[22m
+[2mdist/[22m[36massets/vendor-date-C3_ko1Jj.js         [39m[1m[2m 29.56 kB[22m[1m[22m[2m │ gzip:   8.62 kB[22m
+[2mdist/[22m[36massets/AnalyticsTab-DivoP-EX.js        [39m[1m[2m 37.90 kB[22m[1m[22m[2m │ gzip:  10.60 kB[22m
+[2mdist/[22m[36massets/AdminPanelPage-DM_SE5L4.js      [39m[1m[2m 40.69 kB[22m[1m[22m[2m │ gzip:   8.15 kB[22m
+[2mdist/[22m[36massets/vendor-query-BasNhJ3F.js        [39m[1m[2m 41.05 kB[22m[1m[22m[2m │ gzip:  12.18 kB[22m
+[2mdist/[22m[36massets/vendor-socket-BYY0o7Jn.js       [39m[1m[2m 41.72 kB[22m[1m[22m[2m │ gzip:  13.07 kB[22m
+[2mdist/[22m[36massets/OwnerManagePage-hbQu6zYI.js     [39m[1m[2m 46.00 kB[22m[1m[22m[2m │ gzip:  10.53 kB[22m
+[2mdist/[22m[36massets/vendor-forms-BWz2dEOC.js        [39m[1m[2m127.08 kB[22m[1m[22m[2m │ gzip:  39.05 kB[22m
+[2mdist/[22m[36massets/vendor-react-KOWl8qZi.js        [39m[1m[2m143.47 kB[22m[1m[22m[2m │ gzip:  46.01 kB[22m
+[2mdist/[22m[36massets/index-B8yBkbJO.js               [39m[1m[2m178.99 kB[22m[1m[22m[2m │ gzip:  50.20 kB[22m
+[2mdist/[22m[36massets/LineChart-DWEzIoD-.js           [39m[1m[2m409.94 kB[22m[1m[22m[2m │ gzip: 111.99 kB[22m
+[32m✓ built in 14.83s[39m

@@ -19,13 +19,18 @@ export const GlobalQueueBanner: React.FC = () => {
   const isOnQueuePage = location.pathname === '/queue';
 
   // Cached active queue entry
-  const { data: queueData } = useQuery({
+  const { data: queueData, error } = useQuery({
     queryKey: ['queue', 'me'],
     queryFn: () => queueApi.getMyActive(),
     enabled: isCustomer,
     retry: false,
     staleTime: 10000,
   });
+
+  const isOutage =
+    (error as any)?.response?.status === 502 ||
+    (error as any)?.response?.status === 503 ||
+    (error as any)?.response?.data?.error?.code === 'UPSTREAM_UNAVAILABLE';
 
   // Global toast alerts for queue:called and queue:removed when on other pages
   useEffect(() => {
@@ -68,7 +73,7 @@ export const GlobalQueueBanner: React.FC = () => {
     };
   }, [socket, isCustomer, location.pathname, toast, queryClient]);
 
-  if (!isCustomer || isOnQueuePage || !queueData) {
+  if (!isCustomer || isOnQueuePage || !queueData || isOutage) {
     return null;
   }
 

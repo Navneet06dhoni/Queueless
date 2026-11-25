@@ -220,23 +220,6 @@ async function runSmokeTests() {
         `Status: ${publicStatusRes.status}, IsOpen: ${publicStatusBody?.isOpen}`
       );
 
-      // Spoofed X-User-Id test on queue route: spoofed headers stripped and customer token used
-      const spoofQueueRes = await fetch(`${GATEWAY_URL}/api/queue/me`, {
-        headers: {
-          Authorization: `Bearer ${custToken}`,
-          'X-User-Id': '00000000-0000-0000-0000-000000000000',
-          'X-User-Role': 'admin',
-        },
-      });
-      const spoofQueueBody = await spoofQueueRes.json();
-      // Returns 200 (if active entry) or 404 (if not in queue), but must NOT return 500 and must be evaluated for custId
-      const spoofQueuePass = spoofQueueRes.status === 200 || spoofQueueRes.status === 404;
-      reportCheck(
-        'Spoofed X-User-Id on /api/queue/me is stripped by gateway',
-        spoofQueuePass,
-        `Status: ${spoofQueueRes.status}`
-      );
-
       const clientSocket: Socket = ioClient(GATEWAY_URL, {
         auth: { token: custToken },
         transports: ['websocket'],
@@ -262,12 +245,34 @@ async function runSmokeTests() {
         method: 'POST',
         headers: { Authorization: `Bearer ${custToken}` },
       });
+      const joinBody = await joinRes.json();
       if (!joinRes.ok) {
-        console.error(`   Join queue failed: ${joinRes.status} ${await joinRes.text()}`);
+        console.error(`   Join queue failed: ${joinRes.status} ${JSON.stringify(joinBody)}`);
       }
 
       await positionPromise;
       clientSocket.disconnect();
+
+      // Spoofed X-User-Id and X-User-Role check on /api/queue/me:
+      // Real customer token with spoofed admin headers. Gateway must strip spoofed headers
+      // and inject real customer identity; response must return 200 with customer active entry.
+      const spoofQueueRes = await fetch(`${GATEWAY_URL}/api/queue/me`, {
+        headers: {
+          Authorization: `Bearer ${custToken}`,
+          'X-User-Id': '00000000-0000-0000-0000-000000000000',
+          'X-User-Role': 'admin',
+        },
+      });
+      const spoofQueueBody = await spoofQueueRes.json();
+      const spoofQueuePass =
+        spoofQueueRes.status === 200 &&
+        spoofQueueBody &&
+        spoofQueueBody.ticketNumber === joinBody.ticketNumber;
+      reportCheck(
+        'Spoofed X-User-Id and X-User-Role on /api/queue/me stripped by gateway (returns 200 with customer ticket)',
+        spoofQueuePass,
+        `Status: ${spoofQueueRes.status}, Ticket: ${spoofQueueBody?.ticketNumber}`
+      );
     }
     reportCheck('Socket through gateway receives queue:position event on join', socketReceivedPosition);
 

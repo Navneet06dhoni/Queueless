@@ -142,6 +142,7 @@ async function runRollbackProof() {
     await closeSocketServer();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await pool.end();
+    await new Promise((resolve) => setTimeout(resolve, 300));
   }
 }
 

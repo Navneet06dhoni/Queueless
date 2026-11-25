@@ -149,7 +149,10 @@ async function runE2ENotifications() {
     if (bookRes.status !== 201) {
       throw new Error(`Check 1 failed: booking returned ${bookRes.status} ${JSON.stringify(bookBody)}`);
     }
-    const appointmentId = bookBody.data?.id || bookBody.id;
+    const appointmentId = bookBody.appointment?.id || bookBody.data?.id || bookBody.id;
+    if (!appointmentId) {
+      throw new Error(`Check 1 failed: appointment ID is undefined in response: ${JSON.stringify(bookBody)}`);
+    }
     console.log(`   ✅ PASS: Booking created successfully (Appointment ID: ${appointmentId})`);
 
     // -------------------------------------------------------------------------

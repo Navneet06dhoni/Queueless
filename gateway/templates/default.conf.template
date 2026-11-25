@@ -45,9 +45,7 @@ server {
     error_page 403 /error_403;
     error_page 413 /error_413;
     error_page 429 /error_429;
-    error_page 502 /error_502;
-    error_page 503 /error_503;
-    error_page 504 /error_504;
+    error_page 500 502 503 504 =502 /error_502;
 
     location = /error_401 {
         internal;
@@ -113,7 +111,7 @@ server {
         proxy_set_header X-User-Role "";
         proxy_set_header X-User-Name "";
         proxy_set_header X-User-Email "";
-        proxy_connect_timeout 2s;
+        proxy_connect_timeout 1s;
         proxy_read_timeout 2s;
     }
 
@@ -221,7 +219,7 @@ server {
         proxy_set_header X-User-Name "";
         proxy_set_header X-User-Email "";
         proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
-        proxy_connect_timeout 2s;
+        proxy_connect_timeout 1s;
         proxy_read_timeout 10s;
     }
 
@@ -245,7 +243,7 @@ server {
         proxy_set_header X-User-Name $auth_user_name;
         proxy_set_header X-User-Email $auth_user_email;
         proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
-        proxy_connect_timeout 2s;
+        proxy_connect_timeout 1s;
         proxy_read_timeout 10s;
     }
 

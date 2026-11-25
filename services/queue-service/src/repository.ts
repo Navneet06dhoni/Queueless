@@ -400,6 +400,20 @@ export class QueueRepository {
     };
   }
 
+  async getQueueToday(businessId: string) {
+    const waitingRes = await this.query<{ count: string }>(
+      `SELECT COUNT(*)::text as count FROM queue_history WHERE business_id = $1 AND status = 'waiting'`,
+      [businessId]
+    );
+    const waitingNow = parseInt(waitingRes.rows[0]?.count || '0', 10);
+    const today = await this.getQueueTodayMetrics(businessId);
+    return {
+      waitingNow,
+      servedToday: today.servedToday,
+      averageWaitMinutesToday: today.averageWaitMinutesToday,
+    };
+  }
+
   async getQueueTodayMetrics(businessId: string) {
     const todayRes = await this.query<{
       servedToday: number;

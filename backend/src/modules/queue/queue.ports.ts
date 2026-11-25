@@ -7,7 +7,6 @@ import { config } from '../../config';
 
 export interface QueuePort {
   getQueueStats(): Promise<{ queueServed30Days: number }>;
-  evictUserFromQueues(userId: string): Promise<void>;
   getQueueAnalytics(
     businessId: string,
     from: string,
@@ -38,27 +37,9 @@ export interface QueuePort {
     servedToday: number;
     averageWaitMinutesToday: number | null;
   }>;
-  getQueueEntry(entryId: string): Promise<{
-    id: string;
-    business_id: string;
-    customer_id: string | null;
-    ticket_number: number;
-  } | null>;
 }
 
 export class QueuePortImpl implements QueuePort {
-  async getQueueEntry(entryId: string) {
-    const res = await query<{
-      id: string;
-      business_id: string;
-      customer_id: string | null;
-      ticket_number: number;
-    }>(
-      `SELECT id, business_id, customer_id, ticket_number FROM queue_history WHERE id = $1`,
-      [entryId]
-    );
-    return res.rows[0] || null;
-  }
   async getQueueStats(): Promise<{ queueServed30Days: number }> {
     const queueRes = await query<{ count: string }>(`
       SELECT COUNT(*)::text as count
@@ -66,27 +47,6 @@ export class QueuePortImpl implements QueuePort {
       WHERE status = 'completed' AND completed_at >= NOW() - INTERVAL '30 days'
     `);
     return { queueServed30Days: parseInt(queueRes.rows[0]?.count || '0', 10) };
-  }
-
-  async evictUserFromQueues(userId: string): Promise<void> {
-    try {
-      // Find active queue entries for user
-      const entriesRes = await query<{ id: string; business_id: string }>(
-        `UPDATE queue_history
-         SET status = 'left'
-         WHERE customer_id = $1 AND status IN ('waiting', 'called')
-         RETURNING id, business_id`,
-        [userId]
-      );
-
-      for (const entry of entriesRes.rows) {
-        await queueRedis.removeEntry(entry.business_id, entry.id, userId);
-        await queueService.broadcastQueueState(entry.business_id);
-        await queueService.updateWaitingPositions(entry.business_id);
-      }
-    } catch (err: any) {
-      logger.warn({ err: err.message, userId }, '[QueuePort] Failed to evict user from active queues');
-    }
   }
 
   async getQueueAnalytics(businessId: string, from: string, to: string) {
@@ -329,10 +289,6 @@ export class HttpQueuePortAdapter implements QueuePort {
     return this.client.get<{ queueServed30Days: number }>('/internal/stats?days=30');
   }
 
-  async evictUserFromQueues(userId: string): Promise<void> {
-    await this.client.post('/internal/queue/evict', { userId });
-  }
-
   async getQueueAnalytics(
     businessId: string,
     from: string,
@@ -371,20 +327,6 @@ export class HttpQueuePortAdapter implements QueuePort {
     return this.client.get(
       `/internal/analytics/business/${encodeURIComponent(businessId)}/today`
     );
-  }
-
-  async getQueueEntry(entryId: string): Promise<{
-    id: string;
-    business_id: string;
-    customer_id: string | null;
-    ticket_number: number;
-  } | null> {
-    try {
-      return await this.client.get(`/internal/queue/entries/${encodeURIComponent(entryId)}`);
-    } catch (err: any) {
-      if (err.statusCode === 404) return null;
-      throw err;
-    }
   }
 }
 

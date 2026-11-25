@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
+import { DateTime } from 'luxon';
 import { queueService, QueueService } from './service';
 import { ApiError } from '@queueless/common';
+import { config } from './config';
 
 export class QueueController {
   constructor(private service: QueueService = queueService) {}
@@ -61,7 +63,7 @@ export class QueueController {
       const customerId = req.user!.id;
       const customerName = req.user?.name;
       const customerEmail = req.user?.email;
-      const { appointmentId } = req.body;
+      const appointmentId = req.body.appointmentId || req.body.appointment_id;
 
       if (!appointmentId) {
         throw ApiError.badRequest('appointmentId is required', 'VALIDATION_ERROR');
@@ -177,8 +179,9 @@ export class QueueController {
   getAnalyticsSummary = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { id } = req.params;
-      const from = (req.query.from as string) || new Date().toISOString().split('T')[0];
-      const to = (req.query.to as string) || new Date().toISOString().split('T')[0];
+      const nowKolkata = DateTime.now().setZone(config.BUSINESS_TIMEZONE);
+      const from = (req.query.from as string) || nowKolkata.minus({ days: 7 }).toFormat('yyyy-MM-dd');
+      const to = (req.query.to as string) || nowKolkata.toFormat('yyyy-MM-dd');
       const summary = await this.service.getAnalyticsSummary(id, from, to);
       res.status(200).json(summary);
     } catch (err) {

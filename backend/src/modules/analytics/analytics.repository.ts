@@ -1,5 +1,5 @@
 import { BookingPort, bookingPort } from '../booking/booking.ports';
-import { QueuePort, queuePort } from '../queue/queue.ports';
+import { QueuePort, getQueuePort } from '../queue/queue.ports';
 import { logger } from '../../utils/logger';
 import { BusinessSummaryAnalytics } from './analytics.types';
 
@@ -9,9 +9,17 @@ import { BusinessSummaryAnalytics } from './analytics.types';
  */
 export class AnalyticsRepository {
   constructor(
-    private qPort: QueuePort = queuePort,
-    private bkPort: BookingPort = bookingPort
+    private qPort?: QueuePort,
+    private bkPort?: BookingPort
   ) {}
+
+  private getQueuePort(): QueuePort {
+    return this.qPort || getQueuePort();
+  }
+
+  private getBookingPort(): BookingPort {
+    return this.bkPort || bookingPort;
+  }
 
   /**
    * Aggregate queue metrics from QueuePort and appointment metrics from BookingPort (fail-soft with 2s timeout)
@@ -39,7 +47,7 @@ export class AnalyticsRepository {
       });
 
       queueData = await Promise.race([
-        this.qPort.getQueueAnalytics(businessId, from, to),
+        this.getQueuePort().getQueueAnalytics(businessId, from, to),
         qTimeoutPromise,
       ]).finally(() => clearTimeout(qTimer!));
     } catch (err: any) {
@@ -66,7 +74,7 @@ export class AnalyticsRepository {
       });
 
       apptMetrics = await Promise.race([
-        this.bkPort.getAppointmentAnalytics(businessId, from, to),
+        this.getBookingPort().getAppointmentAnalytics(businessId, from, to),
         timeoutPromise,
       ]).finally(() => clearTimeout(timer!));
     } catch (err: any) {

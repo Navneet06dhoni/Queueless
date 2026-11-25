@@ -102,11 +102,30 @@ describe('OpenAPI Contract Test', () => {
       'GET /api/admin/notifications',
     ]);
 
+    const queueServiceRoutes = new Set([
+      'GET /api/queue/me',
+      'GET /api/queue/:businessid/status',
+      'GET /api/queue/:businessid/position',
+      'POST /api/queue/:businessid/join',
+      'POST /api/queue/:businessid/check-in',
+      'POST /api/queue/:businessid/leave',
+      'POST /api/queue/:businessid/next',
+      'POST /api/queue/:businessid/complete',
+      'POST /api/queue/:businessid/skip',
+      'POST /api/queue/:businessid/walk-in',
+      'PATCH /api/queue/:businessid/open',
+      'GET /api/queue/:businessid',
+    ]);
+
     const missingInExpress: string[] = [];
     for (const route of openApiRouteSet) {
       if (!expressRouteSet.has(route)) {
         if (config.NOTIFICATIONS_MODE === 'service' && notificationServiceRoutes.has(route)) {
           // Handled by services/notification-service in service mode
+          continue;
+        }
+        if (config.QUEUE_MODE === 'service' && queueServiceRoutes.has(route)) {
+          // Handled by services/queue-service in service mode
           continue;
         }
         missingInExpress.push(route);

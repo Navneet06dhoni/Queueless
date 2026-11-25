@@ -82,13 +82,112 @@ describe('QueuePort & HttpQueuePortAdapter (Fail-Soft & Resilience)', () => {
     expect(lastRequestUrl).toBe('/internal/analytics/business/biz-456/today');
   });
 
-  it('HttpQueuePortAdapter: returns null on 404 for getQueueEntry', async () => {
-    simulateStatus = 404;
-    simulateResponse = { error: { code: 'NOT_FOUND', message: 'Queue entry not found' } };
-    const adapter = getAdapter();
+  it('Contract test: every URL HttpQueuePortAdapter calls exists as a route in queue service OpenAPI spec', () => {
+    const { getQueueOpenApiSpec } = require('../../services/queue-service/src/docs/openapi');
+    const spec = getQueueOpenApiSpec();
+    const paths = Object.keys(spec.paths);
 
-    const entry = await adapter.getQueueEntry('non-existent-id');
-    expect(entry).toBeNull();
+    expect(paths).toContain('/internal/stats');
+    expect(paths).toContain('/internal/analytics/business/{id}/summary');
+    expect(paths).toContain('/internal/analytics/business/{id}/today');
+  });
+
+  it('Analytics parity: exact equality of numbers between monolith and queue service for identical data', async () => {
+    const { Pool } = require('pg');
+    const { query: coreQuery } = require('../src/db');
+    const { QueuePortImpl } = require('../src/modules/queue/queue.ports');
+    const { QueueRepository } = require('../../services/queue-service/src/repository');
+
+    const queueDbPool = new Pool({
+      connectionString: 'postgresql://postgres:postgrespassword@localhost:5432/queue_test',
+    });
+
+    // Ensure a valid business exists in core DB
+    let bizRes = await coreQuery(`SELECT id FROM businesses WHERE status = 'approved' LIMIT 1`);
+      let testBizId: string;
+      if (bizRes.rows.length > 0) {
+        testBizId = bizRes.rows[0].id;
+      } else {
+        const ownerRes = await coreQuery(`
+          INSERT INTO users (id, name, email, password_hash, role)
+          VALUES ('11111111-9999-9999-9999-999999999999', 'Test Owner', 'parity-owner@example.com', 'hash', 'owner')
+          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+          RETURNING id
+        `);
+        const insertedBiz = await coreQuery(`
+          INSERT INTO businesses (id, owner_id, name, category, address, city, phone, status)
+          VALUES ('44444444-4444-4444-4444-444444444444', $1, 'Parity Clinic', 'clinic', '123 Test St', 'Mumbai', '9876543210', 'approved')
+          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+          RETURNING id
+        `, [ownerRes.rows[0].id]);
+        testBizId = insertedBiz.rows[0].id;
+      }
+    // Ensure valid customer exists in core DB
+    let userRes = await coreQuery(`SELECT id FROM users WHERE role = 'customer' LIMIT 1`);
+    let cust1: string;
+    if (userRes.rows.length > 0) {
+      cust1 = userRes.rows[0].id;
+    } else {
+      const u = await coreQuery(`
+        INSERT INTO users (id, name, email, password_hash, role)
+        VALUES ('55555555-5555-5555-5555-555555555551', 'Parity Customer', 'parity-cust@example.com', 'hash', 'customer')
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+        RETURNING id
+      `);
+      cust1 = u.rows[0].id;
+    }
+
+    // Clear prior test rows
+    await coreQuery(`DELETE FROM queue_history WHERE business_id = $1`, [testBizId]);
+    await queueDbPool.query(`DELETE FROM queue_history WHERE business_id = $1`, [testBizId]);
+
+    // Insert identical rows into core and queue_db
+    const insertSql = `
+      INSERT INTO queue_history (
+        id, business_id, customer_id, ticket_number, source, status,
+        joined_at, called_at, completed_at, estimated_wait_minutes
+      ) VALUES
+      ('aaaaaaaa-1111-1111-1111-111111111111', $1, $2, 1, 'online', 'completed', NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '15 minutes', NOW() - INTERVAL '5 minutes', 10),
+      ('bbbbbbbb-2222-2222-2222-222222222222', $1, NULL, 2, 'walk_in', 'waiting', NOW() - INTERVAL '10 minutes', NULL, NULL, 15)
+    `;
+
+    await coreQuery(insertSql, [testBizId, cust1]);
+    await queueDbPool.query(insertSql, [testBizId, cust1]);
+
+    try {
+      const monolithPort = new QueuePortImpl();
+      const queueRepo = new QueueRepository(async (sql: string, params?: any[]) => queueDbPool.query(sql, params));
+
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // 1. Summary comparison
+      const coreSummary = await monolithPort.getQueueAnalytics(testBizId, todayStr, todayStr);
+      const queueSummary = await queueRepo.getQueueAnalyticsSummary(testBizId, todayStr, todayStr);
+
+      expect(coreSummary.queue.totalServed).toBe(queueSummary.queue.totalServed);
+      expect(coreSummary.queue.walkInCount).toBe(queueSummary.queue.walkInCount);
+      expect(coreSummary.queue.onlineCount).toBe(queueSummary.queue.onlineCount);
+      expect(coreSummary.averageWaitMinutes).toBe(queueSummary.averageWaitMinutes);
+      expect(coreSummary.averageServiceMinutes).toBe(queueSummary.averageServiceMinutes);
+
+      // 2. Today metrics comparison
+      const coreToday = await monolithPort.getQueueToday(testBizId);
+      const queueToday = await queueRepo.getQueueTodayMetrics(testBizId);
+
+      expect(coreToday.servedToday).toBe(queueToday.servedToday);
+      expect(coreToday.averageWaitMinutesToday).toBe(queueToday.averageWaitMinutesToday);
+
+      // 3. Stats comparison
+      const coreStats = await monolithPort.getQueueStats();
+      const queueStats = await queueRepo.get30DayStats(30);
+
+      expect(coreStats.queueServed30Days).toBeGreaterThanOrEqual(1);
+      expect(coreStats.queueServed30Days).toBe(queueStats.queueServed30Days);
+    } finally {
+      await coreQuery(`DELETE FROM queue_history WHERE business_id = $1`, [testBizId]);
+      await queueDbPool.query(`DELETE FROM queue_history WHERE business_id = $1`, [testBizId]);
+      await queueDbPool.end();
+    }
   });
 
   it('AnalyticsRepository: fail-soft rule when queue service is UP', async () => {
@@ -111,10 +210,8 @@ describe('QueuePort & HttpQueuePortAdapter (Fail-Soft & Resilience)', () => {
 
     const mockQPort: QueuePort = {
       getQueueStats: async () => ({ queueServed30Days: 10 }),
-      evictUserFromQueues: async () => {},
       getQueueAnalytics: async () => mockQueueData,
       getQueueToday: async () => ({ waitingNow: 2, servedToday: 5, averageWaitMinutesToday: 8.5 }),
-      getQueueEntry: async () => null,
     };
 
     const mockBkPort: any = {
@@ -135,10 +232,8 @@ describe('QueuePort & HttpQueuePortAdapter (Fail-Soft & Resilience)', () => {
   it('AnalyticsRepository: fail-soft rule when queue service is DOWN (queue fields become null, partial: true)', async () => {
     const failingQPort: QueuePort = {
       getQueueStats: async () => { throw new Error('Queue service unavailable'); },
-      evictUserFromQueues: async () => { throw new Error('Queue service unavailable'); },
       getQueueAnalytics: async () => { throw new Error('Connection refused to queue service'); },
       getQueueToday: async () => { throw new Error('Queue service unavailable'); },
-      getQueueEntry: async () => { throw new Error('Queue service unavailable'); },
     };
 
     const mockBkPort: any = {
@@ -165,14 +260,12 @@ describe('QueuePort & HttpQueuePortAdapter (Fail-Soft & Resilience)', () => {
   it('AnalyticsRepository: fail-soft rule when queue service is SLOW (>2s timeout)', async () => {
     const slowQPort: QueuePort = {
       getQueueStats: async () => ({ queueServed30Days: 0 }),
-      evictUserFromQueues: async () => {},
       getQueueAnalytics: async () => {
         // Simulates timeout (>2000ms)
         await new Promise((resolve) => setTimeout(resolve, 2500));
         return {} as any;
       },
       getQueueToday: async () => ({ waitingNow: 0, servedToday: 0, averageWaitMinutesToday: null }),
-      getQueueEntry: async () => null,
     };
 
     const mockBkPort: any = {
@@ -192,4 +285,9 @@ describe('QueuePort & HttpQueuePortAdapter (Fail-Soft & Resilience)', () => {
     expect(summary.partial).toBe(true);
     expect(summary.queue).toBeNull();
   }, 10000);
+
+  afterAll(async () => {
+    const { pool } = require('../src/db');
+    await pool.end();
+  });
 });

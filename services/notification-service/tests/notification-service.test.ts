@@ -214,6 +214,84 @@ describe('Notification Service Suite', () => {
       expect(notifs.rows[0].title).toBe('Now Serving You!');
     });
 
+    test('handles queue.advanced: near once, next once, called once with dedupe keys and no duplication on repeat', async () => {
+      mockSendMail.mockClear();
+      const calledEntryId = '11111111-0000-0000-0000-000000000001';
+      const calledCustId = '11111111-0000-0000-0000-000000000002';
+      const nextEntryId = '22222222-0000-0000-0000-000000000001';
+      const nextCustId = '22222222-0000-0000-0000-000000000002';
+      const nearEntryId = '33333333-0000-0000-0000-000000000001';
+      const nearCustId = '33333333-0000-0000-0000-000000000002';
+
+      const payload = {
+        v: 1,
+        eventId: 'evt-q-adv-1',
+        type: 'queue.advanced',
+        occurredAt: new Date().toISOString(),
+        data: {
+          businessId: 'biz-1',
+          businessName: 'Salon Express',
+          calledEntryId,
+          calledCustomerId: calledCustId,
+          calledCustomerName: 'Alice Called',
+          calledCustomerEmail: 'alice@example.com',
+          ticketNumber: 10,
+          upcoming: [
+            {
+              entryId: nextEntryId,
+              customerId: nextCustId,
+              customerName: 'Bob Next',
+              customerEmail: 'bob@example.com',
+              position: 1,
+              ticketNumber: 11,
+            },
+            {
+              entryId: nearEntryId,
+              customerId: nearCustId,
+              customerName: 'Charlie Near',
+              customerEmail: 'charlie@example.com',
+              position: 3,
+              ticketNumber: 13,
+            },
+          ],
+        },
+      };
+
+      // First delivery: near once, next once, called once
+      await notificationService.handleQueueAdvanced(payload);
+
+      const calledNotifs = await query('SELECT * FROM notifications WHERE user_id = $1', [calledCustId]);
+      expect(calledNotifs.rows).toHaveLength(1);
+      expect(calledNotifs.rows[0].dedupe_key).toBe(`queue:${calledEntryId}:called`);
+      expect(calledNotifs.rows[0].title).toBe('Now Serving You!');
+
+      const nextNotifs = await query('SELECT * FROM notifications WHERE user_id = $1', [nextCustId]);
+      expect(nextNotifs.rows).toHaveLength(1);
+      expect(nextNotifs.rows[0].dedupe_key).toBe(`queue:${nextEntryId}:next`);
+      expect(nextNotifs.rows[0].title).toBe("You're next in line!");
+
+      const nearNotifs = await query('SELECT * FROM notifications WHERE user_id = $1', [nearCustId]);
+      expect(nearNotifs.rows).toHaveLength(1);
+      expect(nearNotifs.rows[0].dedupe_key).toBe(`queue:${nearEntryId}:near`);
+      expect(nearNotifs.rows[0].title).toBe('Your turn is coming up soon!');
+
+      // Repeat event with different eventId: dedupe key prevents duplicate insertion
+      const repeatPayload = {
+        ...payload,
+        eventId: 'evt-q-adv-2',
+      };
+      await notificationService.handleQueueAdvanced(repeatPayload);
+
+      const calledAfter = await query('SELECT * FROM notifications WHERE user_id = $1', [calledCustId]);
+      expect(calledAfter.rows).toHaveLength(1);
+
+      const nextAfter = await query('SELECT * FROM notifications WHERE user_id = $1', [nextCustId]);
+      expect(nextAfter.rows).toHaveLength(1);
+
+      const nearAfter = await query('SELECT * FROM notifications WHERE user_id = $1', [nearCustId]);
+      expect(nearAfter.rows).toHaveLength(1);
+    });
+
     test('handles queue.advanced: falls back to "Customer" and skips email when customerName and customerEmail are missing', async () => {
       mockSendMail.mockClear();
       const fallbackCustomerId = '00000000-0000-0000-0000-000000000999';

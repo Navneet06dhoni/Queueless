@@ -54,6 +54,7 @@ describe('Monolith Architecture Modes (QUEUE_MODE & Startup Guards)', () => {
     // Reset subscribed state and set embedded mode
     (config as any).QUEUE_MODE = 'embedded';
     (config as any).EVENT_TRANSPORT = 'rabbitmq';
+    (config as any).SOCKET_MODE = 'embedded';
 
     const { initQueueSubscriptions, _resetSubscribedForTesting } = await import('../src/modules/queue');
     _resetSubscribedForTesting();
@@ -97,6 +98,7 @@ describe('Monolith Architecture Modes (QUEUE_MODE & Startup Guards)', () => {
     });
 
     (config as any).EVENT_TRANSPORT = 'rabbitmq';
+    (config as any).SOCKET_MODE = 'embedded';
 
     const { initSocketSubscriptions } = await import('../src/socket');
     await initSocketSubscriptions();

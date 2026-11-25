@@ -72,8 +72,8 @@ const envSchema = z.object({
   INTERNAL_TOKEN: z.string().default('queueless-internal-gateway-secret-key-32ch'),
 
   // Queue Architecture Mode & Service URL
-  QUEUE_MODE: z.enum(['embedded', 'service']).default('embedded'),
-  SOCKET_MODE: z.enum(['embedded', 'remote']).default('embedded'),
+  QUEUE_MODE: z.enum(['embedded', 'service']).default('service'),
+  SOCKET_MODE: z.enum(['embedded', 'remote']).default('remote'),
   QUEUE_SERVICE_URL: z.string().default('http://localhost:3003'),
   DEBUG_ENDPOINTS: z.string().default('false'),
 });

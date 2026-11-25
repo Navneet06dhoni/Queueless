@@ -128,6 +128,7 @@ describe('Internal Core API (/internal)', () => {
         workingHoursToday: {
           openTime: '09:00:00',
           closeTime: '17:00:00',
+          isOpenToday: true,
         },
       });
     });

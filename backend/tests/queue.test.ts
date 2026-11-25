@@ -10,9 +10,12 @@ import { generateAccessToken } from '../src/modules/auth/auth.utils';
 import { queueService } from '../src/modules/queue/queue.service';
 import { queueRedisClient } from '../src/modules/queue/queue.redis';
 import { closeSocketServer, initSocketServer } from '../src/socket';
+import { config } from '../src/config';
 import { setupTestDb, TestDbInstance } from './setupTestDb';
 
 describe('Live Virtual Queue & Hybrid Check-in Module', () => {
+  const origQueueMode = config.QUEUE_MODE;
+  const origSocketMode = config.SOCKET_MODE;
   let testDb: TestDbInstance;
   let app: ReturnType<typeof createApp>;
   let httpServer: http.Server;
@@ -34,6 +37,8 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
   let serviceId: string;
 
   beforeAll(async () => {
+    (config as any).QUEUE_MODE = 'embedded';
+    (config as any).SOCKET_MODE = 'embedded';
     testDb = await setupTestDb();
     app = createApp();
 
@@ -51,6 +56,8 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
   }, 15000);
 
   afterAll(async () => {
+    (config as any).QUEUE_MODE = origQueueMode;
+    (config as any).SOCKET_MODE = origSocketMode;
     clock.resetNow();
     await closeSocketServer();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));

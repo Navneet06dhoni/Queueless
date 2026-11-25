@@ -4,12 +4,15 @@ import { createApp } from '../src/app';
 import { pool, setPool } from '../src/db';
 import redis from '../src/config/redis';
 import { config } from '../src/config';
+import { events } from '../src/events';
+import { _resetSubscribedForTesting, initQueueSubscriptions } from '../src/modules/queue';
 import { generateAccessToken } from '../src/modules/auth/auth.utils';
 import { analyticsRepository } from '../src/modules/analytics/analytics.repository';
 import { setupTestDb, TestDbInstance } from './setupTestDb';
 import bcrypt from 'bcryptjs';
 
 describe('Analytics & Admin Module (Real Postgres & Redis)', () => {
+  const origQueueMode = config.QUEUE_MODE;
   let app: ReturnType<typeof createApp>;
   let realPool: Pool;
   let testDb: TestDbInstance;
@@ -28,6 +31,9 @@ describe('Analytics & Admin Module (Real Postgres & Redis)', () => {
   let serviceId: string;
 
   beforeAll(async () => {
+    (config as any).QUEUE_MODE = 'embedded';
+    _resetSubscribedForTesting();
+    initQueueSubscriptions();
     testDb = await setupTestDb();
     realPool = testDb.pool;
 
@@ -118,6 +124,7 @@ describe('Analytics & Admin Module (Real Postgres & Redis)', () => {
   });
 
   afterAll(async () => {
+    (config as any).QUEUE_MODE = origQueueMode;
     // Cleanup created data
     try {
       await realPool.query(`DELETE FROM admin_audit_log WHERE admin_id = $1`, [adminId]);
@@ -501,6 +508,7 @@ describe('Analytics & Admin Module (Real Postgres & Redis)', () => {
         .send({ blocked: true, reason: 'Repeated violation of platform guidelines' });
 
       expect(blockRes.status).toBe(200);
+      await events.flush();
 
       // A. Login rejected with 403
       const loginRes = await request(app)

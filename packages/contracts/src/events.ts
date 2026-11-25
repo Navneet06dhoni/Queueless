@@ -122,6 +122,10 @@ export const QueueAdvancedEventSchema = BaseEventSchema.extend({
     .array(
       z.object({
         customerId: z.string().uuid().nullable().optional(),
+        customerName: z.string().optional(),
+        customerEmail: z.string().email().optional(),
+        ticketNumber: z.number().int().optional(),
+        estimatedWaitMinutes: z.number().int().nullable().optional(),
         position: z.number().int(),
         entryId: z.string().optional(),
       })

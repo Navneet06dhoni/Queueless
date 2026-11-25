@@ -3,11 +3,13 @@ import { query } from '../src/db';
 import { adminService } from '../src/modules/admin/admin.service';
 import { events } from '../src/events';
 import { initBookingSubscriptions } from '../src/modules/booking';
-import { initQueueSubscriptions } from '../src/modules/queue';
+import { config } from '../src/config';
+import { _resetSubscribedForTesting, initQueueSubscriptions } from '../src/modules/queue';
 import { queueRedis } from '../src/modules/queue/queue.redis';
 import { setupTestDb, TestDbInstance } from './setupTestDb';
 
 describe('user.blocked Decoupled Dual Consumption', () => {
+  const origQueueMode = config.QUEUE_MODE;
   let testDb: TestDbInstance;
   let adminId: string;
   let customerId: string;
@@ -19,12 +21,15 @@ describe('user.blocked Decoupled Dual Consumption', () => {
   let queueEntryId: string;
 
   beforeAll(async () => {
+    (config as any).QUEUE_MODE = 'embedded';
+    _resetSubscribedForTesting();
     testDb = await setupTestDb();
     initBookingSubscriptions();
     initQueueSubscriptions();
   });
 
   afterAll(async () => {
+    (config as any).QUEUE_MODE = origQueueMode;
     await events.flush();
     await testDb.cleanup();
   });

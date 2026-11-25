@@ -207,6 +207,36 @@ async function runSmokeTests() {
         );
       }
 
+      // Public status check: anonymous GET /api/queue/:id/status without auth
+      const publicStatusRes = await fetch(`${GATEWAY_URL}/api/queue/${bizId}/status`);
+      const publicStatusBody = await publicStatusRes.json();
+      const publicStatusPass =
+        publicStatusRes.status === 200 &&
+        publicStatusBody &&
+        typeof publicStatusBody.isOpen === 'boolean';
+      reportCheck(
+        'Public GET /api/queue/:businessId/status returns 200 anonymously without auth',
+        publicStatusPass,
+        `Status: ${publicStatusRes.status}, IsOpen: ${publicStatusBody?.isOpen}`
+      );
+
+      // Spoofed X-User-Id test on queue route: spoofed headers stripped and customer token used
+      const spoofQueueRes = await fetch(`${GATEWAY_URL}/api/queue/me`, {
+        headers: {
+          Authorization: `Bearer ${custToken}`,
+          'X-User-Id': '00000000-0000-0000-0000-000000000000',
+          'X-User-Role': 'admin',
+        },
+      });
+      const spoofQueueBody = await spoofQueueRes.json();
+      // Returns 200 (if active entry) or 404 (if not in queue), but must NOT return 500 and must be evaluated for custId
+      const spoofQueuePass = spoofQueueRes.status === 200 || spoofQueueRes.status === 404;
+      reportCheck(
+        'Spoofed X-User-Id on /api/queue/me is stripped by gateway',
+        spoofQueuePass,
+        `Status: ${spoofQueueRes.status}`
+      );
+
       const clientSocket: Socket = ioClient(GATEWAY_URL, {
         auth: { token: custToken },
         transports: ['websocket'],

@@ -244,6 +244,10 @@ export const emitNotificationNew = (
 };
 
 export const initSocketSubscriptions = async (): Promise<void> => {
+  if (config.SOCKET_MODE === 'remote') {
+    logger.info('[SocketModule] SOCKET_MODE is remote; skipping monolith socket subscriptions');
+    return;
+  }
   const { events } = await import('../events');
   const { rabbitMQClient, EXCHANGES } = await import('../events/rabbitmq');
 

@@ -19,6 +19,7 @@ const configSchema = z.object({
   EMAIL_FROM: z.string().default('"QueueLess Alerts" <no-reply@queueless.local>'),
   NOTIFICATIONS_ENABLED: z.coerce.boolean().default(true),
   EMAIL_RETRY_DELAYS_MS: z.string().default('1000,4000,16000'),
+  QUEUE_NOTIFY_POSITION: z.coerce.number().default(3),
   BUSINESS_TIMEZONE: z.string().default('Asia/Kolkata'),
 });
 

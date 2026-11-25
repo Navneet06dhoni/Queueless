@@ -44,6 +44,7 @@ router.get('/businesses/:id/queue-info', async (req: Request, res: Response, nex
       ? {
           openTime: whRes.rows[0].open_time,
           closeTime: whRes.rows[0].close_time,
+          isOpenToday: true,
         }
       : null;
 

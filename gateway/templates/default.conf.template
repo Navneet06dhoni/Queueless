@@ -8,6 +8,12 @@ upstream notification_service {
     keepalive 16;
 }
 
+upstream queue_service {
+    ip_hash; # Sticky sessions for Socket.io HTTP long-polling handshakes prior to WebSocket upgrade
+    server ${QUEUE_UPSTREAM};
+    keepalive 32;
+}
+
 server {
     listen 8080;
     server_name _;
@@ -201,9 +207,51 @@ server {
         proxy_read_timeout 5s;
     }
 
-    # (6) WebSocket proxying for Socket.io
+    # (6) Public queue status route (anonymous, no auth_request)
+    location ~* ^/api/queue/([a-f0-9\-]+)/status$ {
+        limit_req zone=api_limit burst=10 nodelay;
+        proxy_pass http://queue_service;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Request-Id $gateway_request_id;
+        proxy_set_header X-User-Id "";
+        proxy_set_header X-User-Role "";
+        proxy_set_header X-User-Name "";
+        proxy_set_header X-User-Email "";
+        proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 10s;
+    }
+
+    # (7) Queue service authenticated routes with auth_request
+    location /api/queue/ {
+        limit_req zone=api_limit burst=10 nodelay;
+        auth_request /internal/auth-verify;
+        auth_request_set $auth_user_id $upstream_http_x_user_id;
+        auth_request_set $auth_user_role $upstream_http_x_user_role;
+        auth_request_set $auth_user_name $upstream_http_x_user_name;
+        auth_request_set $auth_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://queue_service;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Request-Id $gateway_request_id;
+        proxy_set_header X-User-Id $auth_user_id;
+        proxy_set_header X-User-Role $auth_user_role;
+        proxy_set_header X-User-Name $auth_user_name;
+        proxy_set_header X-User-Email $auth_user_email;
+        proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 10s;
+    }
+
+    # (8) WebSocket proxying for Socket.io routed to queue_service
     location /socket.io/ {
-        proxy_pass http://backend_service;
+        proxy_pass http://queue_service;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -214,7 +262,7 @@ server {
         proxy_set_header X-User-Role "";
         proxy_set_header X-User-Name "";
         proxy_set_header X-User-Email "";
-        proxy_set_header X-Internal-Token "";
+        proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }

@@ -6,7 +6,6 @@ import { notificationRepository, NotificationRepository } from './notification.r
 import { bookingPort } from '../booking/booking.ports';
 import { businessPort } from '../business/business.ports';
 import { userPort } from '../auth/auth.ports';
-import { queuePort } from '../queue/queue.ports';
 import {
   appointmentReminder,
   bookingCancelledCustomer,
@@ -393,12 +392,7 @@ export class NotificationService {
         user = await userPort.getUserBasic(calledCustomerId);
       }
       if (user) {
-        let ticketNumber = d.ticketNumber;
-        if (!ticketNumber && calledEntryId) {
-          const entry = await queuePort.getQueueEntry(calledEntryId);
-          ticketNumber = entry?.ticket_number;
-        }
-        ticketNumber = ticketNumber || 0;
+        const ticketNumber = d.ticketNumber || d.called?.ticketNumber || 0;
         const template = queueStageCalled({
           customerName: user.name,
           businessName,

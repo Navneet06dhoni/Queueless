@@ -46,13 +46,14 @@ const startServer = async () => {
   // 6. Start Outbox Relay
   const outboxRelay = new OutboxRelay({
     outboxRepository: queueService.getOutboxRepository(),
-    publishEvent: async (envelope) => {
+    publishEvent: async (eventType: string, payload: any) => {
       const client = queueConsumerManager.getRabbitClient();
       if (client) {
-        await client.publish(EXCHANGES.EVENTS, envelope.eventType, envelope);
+        return await client.publish(eventType, payload);
       }
+      return false;
     },
-    pollIntervalMs: 1000,
+    intervalMs: 1000,
   });
   queueService.setOutboxRelay(outboxRelay);
   outboxRelay.start();
@@ -63,9 +64,8 @@ const startServer = async () => {
   });
 
   // 8. Graceful shutdown
-  createGracefulShutdown({
+  const shutdown = createGracefulShutdown({
     server,
-    serviceName: 'queue-service',
     onShutdown: async () => {
       logger.info('🛑 Shutting down queue service resources...');
       outboxRelay.stop();
@@ -76,6 +76,9 @@ const startServer = async () => {
       logger.info('✅ Queue service shutdown complete');
     },
   });
+
+  process.on('SIGINT', () => shutdown('SIGINT').then(() => process.exit(0)));
+  process.on('SIGTERM', () => shutdown('SIGTERM').then(() => process.exit(0)));
 };
 
 if (require.main === module) {

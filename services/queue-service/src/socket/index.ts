@@ -35,6 +35,7 @@ export const initSocketServer = (httpServer: http.Server): Server => {
       credentials: true,
     },
     transports: ['websocket', 'polling'],
+    path: '/socket.io',
   });
 
   // Attempt Redis adapter for multi-instance scaling
@@ -181,6 +182,7 @@ export const emitQueueUpdated = (businessId: string, status: PublicQueueStatus):
 
 export const emitOwnerQueueUpdated = (businessId: string, details: OwnerQueueDetails): void => {
   if (io) {
+    io.to(`owner:${businessId}`).emit('queue:owner-updated', details);
     io.to(`owner:${businessId}`).emit('owner:queue:updated', details);
   }
 };

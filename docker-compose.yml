@@ -84,6 +84,45 @@ services:
       timeout: 3s
       retries: 5
 
+  queue-service:
+    build:
+      context: .
+      dockerfile: services/queue-service/Dockerfile
+    container_name: queueless_queue_service
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3003:3003"
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      INTERNAL_TOKEN: queueless-internal-gateway-secret-key-32ch
+      CORE_SERVICE_URL: http://host.docker.internal:5000
+      DATABASE_URL: postgresql://queue_user:queue_password@postgres:5432/queue_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 2
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      BUSINESS_TIMEZONE: Asia/Kolkata
+      QUEUE_NOTIFY_POSITION: 3
+      DEFAULT_SERVICE_MINUTES: 10
+      CHECKIN_EARLY_MINUTES: 30
+      CHECKIN_GRACE_MINUTES: 15
+      FRONTEND_ORIGIN: "http://localhost:5173"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3003/health/live | grep ok || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   gateway:
     image: nginx:1.26-alpine
     container_name: queueless_gateway
@@ -93,8 +132,9 @@ services:
     environment:
       BACKEND_UPSTREAM: host.docker.internal:5000
       NOTIFICATION_UPSTREAM: notification-service:3004
+      QUEUE_UPSTREAM: queue-service:3003
       INTERNAL_TOKEN: queueless-internal-gateway-secret-key-32ch
-      NGINX_ENVSUBST_FILTER: "BACKEND_UPSTREAM|NOTIFICATION_UPSTREAM|INTERNAL_TOKEN"
+      NGINX_ENVSUBST_FILTER: "BACKEND_UPSTREAM|NOTIFICATION_UPSTREAM|QUEUE_UPSTREAM|INTERNAL_TOKEN"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -102,6 +142,8 @@ services:
       - ./gateway/templates:/etc/nginx/templates:ro
     depends_on:
       notification-service:
+        condition: service_started
+      queue-service:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz | grep ok || exit 1"]

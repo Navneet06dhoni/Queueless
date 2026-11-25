@@ -378,7 +378,8 @@ export class NotificationService {
     const businessName = d.businessName || 'Business';
 
     const calledCustomerId = d.called?.customerId || d.calledCustomerId;
-    if (calledCustomerId) {
+    const calledEntryId = d.calledEntryId || d.called?.id || d.called?.entryId || calledCustomerId;
+    if (calledCustomerId && calledEntryId) {
       const customerName = d.called?.customerName || d.calledCustomerName || d.customerName || 'Customer';
       const customerEmail = d.called?.customerEmail || d.calledCustomerEmail || d.customerEmail || null;
 
@@ -397,21 +398,35 @@ export class NotificationService {
           businessId: d.businessId,
           ticketNumber,
           stage: 'called',
-          customerName: customerName || 'Valued Customer',
-          customerEmail: customerEmail || null,
+          entryId: calledEntryId,
+          customerName,
+          customerEmail,
         },
-        dedupeKey: `${envelope.eventId || ''}:${calledCustomerId}:stage_called`,
+        dedupeKey: `queue:${calledEntryId}:called`,
+        emailOptions: customerEmail
+          ? {
+              to: customerEmail,
+              subject: `It's Your Turn! Ticket #${ticketNumber} at ${businessName}`,
+              text: `Hello ${customerName},\n\n${template.message}`,
+              html: `<p>Hello <strong>${customerName}</strong>,</p><p>${template.message}</p>`,
+            }
+          : undefined,
       });
     }
 
     if (Array.isArray(d.upcoming)) {
       for (const entry of d.upcoming) {
         if (!entry.customerId) continue;
+        const entryId = entry.entryId || entry.id || entry.customerId;
+        const customerName = entry.customerName || 'Customer';
+        const customerEmail = entry.customerEmail || null;
+        const ticketNumber = entry.ticketNumber || 0;
 
+        // Stage "next" (Position 1)
         if (entry.position === 1) {
           const template = queueStageNext({
             businessName,
-            ticketNumber: entry.ticketNumber,
+            ticketNumber,
           });
 
           await this.sendNotification({
@@ -421,17 +436,31 @@ export class NotificationService {
             message: template.message,
             data: {
               businessId: d.businessId,
-              ticketNumber: entry.ticketNumber,
+              ticketNumber,
               stage: 'next',
               position: 1,
+              entryId,
+              customerName,
+              customerEmail,
             },
-            dedupeKey: `${envelope.eventId}:${entry.customerId}:stage_next`,
+            dedupeKey: `queue:${entryId}:next`,
+            emailOptions: customerEmail
+              ? {
+                  to: customerEmail,
+                  subject: `You're Next! Ticket #${ticketNumber} at ${businessName}`,
+                  text: `Hello ${customerName},\n\n${template.message}`,
+                  html: `<p>Hello <strong>${customerName}</strong>,</p><p>${template.message}</p>`,
+                }
+              : undefined,
           });
-        } else if (entry.position <= 3) {
+        }
+
+        // Stage "near" (Position <= 3, but > 1)
+        else if (entry.position <= (config.QUEUE_NOTIFY_POSITION || 3)) {
           const template = queueStageNear({
             businessName,
             position: entry.position,
-            ticketNumber: entry.ticketNumber,
+            ticketNumber,
           });
 
           await this.sendNotification({
@@ -441,11 +470,22 @@ export class NotificationService {
             message: template.message,
             data: {
               businessId: d.businessId,
-              ticketNumber: entry.ticketNumber,
+              ticketNumber,
               stage: 'near',
               position: entry.position,
+              entryId,
+              customerName,
+              customerEmail,
             },
-            dedupeKey: `${envelope.eventId}:${entry.customerId}:stage_near_${entry.position}`,
+            dedupeKey: `queue:${entryId}:near`,
+            emailOptions: customerEmail
+              ? {
+                  to: customerEmail,
+                  subject: `Queue Update: Position #${entry.position} at ${businessName}`,
+                  text: `Hello ${customerName},\n\n${template.message}`,
+                  html: `<p>Hello <strong>${customerName}</strong>,</p><p>${template.message}</p>`,
+                }
+              : undefined,
           });
         }
       }

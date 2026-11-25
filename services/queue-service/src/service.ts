@@ -105,7 +105,7 @@ export class QueueService {
 
     // Check working hours today (from core cache)
     const hours = biz.workingHoursToday;
-    if (!hours || !hours.isOpenToday) {
+    if (!hours || hours.isOpenToday === false) {
       throw ApiError.conflict('Business is currently closed outside of working hours', 'OUTSIDE_WORKING_HOURS');
     }
 
@@ -666,10 +666,19 @@ export class QueueService {
 
       // 3. Prepare upcoming list for queue.advanced
       const waiting = await this.redisClient.getWaitingEntries(businessId);
+      const avgMinutes = await this.getAverageServiceMinutes(businessId);
       const upcoming = waiting
         .slice(0, config.QUEUE_NOTIFY_POSITION)
-        .map((w, idx) => ({ customerId: w.customerId, position: idx + 1, ticketNumber: w.ticketNumber }))
-        .filter((u): u is { customerId: string; position: number; ticketNumber: number } => u.customerId !== null);
+        .map((w, idx) => ({
+          entryId: w.id,
+          customerId: w.customerId,
+          customerName: w.customerName || undefined,
+          customerEmail: w.customerEmail || undefined,
+          position: idx + 1,
+          ticketNumber: w.ticketNumber,
+          estimatedWaitMinutes: this.calculateEstimatedWait(idx + 1, avgMinutes),
+        }))
+        .filter((u): u is typeof u & { customerId: string } => u.customerId !== null);
 
       const eventPayload = {
         v: 1,

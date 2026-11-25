@@ -61,6 +61,10 @@ async function main() {
     customerIds.push(userRes.rows[0].id);
   }
 
+  const isQueueService = config.QUEUE_MODE === 'service';
+  const queueDbUrl = process.env.QUEUE_DATABASE_URL || 'postgresql://queue_user:queue_password@localhost:5432/queue_db';
+  const queuePool = isQueueService ? new pool.constructor({ connectionString: queueDbUrl }) : null;
+
   // 4. Idempotently clean up previously seeded analytics data
   console.log('🧹 Cleaning up previous analytics seed data...');
   await pool.query(
@@ -70,6 +74,22 @@ async function main() {
             OR customer_id = ANY($3::uuid[]))`,
     [business.id, SEED_TAG, customerIds]
   );
+
+  if (queuePool) {
+    await queuePool.query(
+      `DELETE FROM queue_history
+       WHERE business_id = $1
+         AND (walk_in_name LIKE '%' || $2 || '%'
+              OR customer_id = ANY($3::uuid[]))`,
+      [business.id, SEED_TAG, customerIds]
+    );
+    await queuePool.query(
+      `INSERT INTO queue_settings (business_id, queue_open, updated_at)
+       VALUES ($1, true, NOW())
+       ON CONFLICT (business_id) DO UPDATE SET queue_open = true, updated_at = NOW()`,
+      [business.id]
+    );
+  }
 
   await pool.query(
     `DELETE FROM appointments
@@ -225,6 +245,32 @@ async function main() {
         ]
       );
 
+      if (queuePool) {
+        await queuePool.query(
+          `INSERT INTO queue_history (
+             business_id, customer_id, customer_name, walk_in_name, ticket_number,
+             source, appointment_id, score, joined_at, called_at,
+             completed_at, status, estimated_wait_minutes
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [
+            business.id,
+            customerId,
+            walkInName,
+            walkInName,
+            ticket,
+            source,
+            appointmentId,
+            score,
+            joinedAt,
+            calledAt,
+            completedAt,
+            status,
+            estimatedWaitMinutes,
+          ]
+        );
+      }
+
       totalQueueEntries++;
     }
   }
@@ -249,6 +295,9 @@ async function main() {
   console.log('=============================================\n');
 
   await pool.end();
+  if (queuePool) {
+    await queuePool.end();
+  }
 }
 
 main().catch(async (err) => {

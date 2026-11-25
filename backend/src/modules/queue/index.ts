@@ -1,14 +1,28 @@
 import { events } from '../../events';
-import { queuePort } from './queue.ports';
 import { logger } from '../../utils/logger';
 import { rabbitMQClient, QUEUES } from '../../events/rabbitmq';
 import { config } from '../../config';
+import { query } from '../../db';
+import { queueRedis } from './queue.redis';
+import { queueService } from './queue.service';
 
 let subscribed = false;
 
 const handleUserBlocked = async (userId: string) => {
   try {
-    await queuePort.evictUserFromQueues(userId);
+    const entriesRes = await query<{ id: string; business_id: string }>(
+      `UPDATE queue_history
+       SET status = 'left'
+       WHERE customer_id = $1 AND status IN ('waiting', 'called')
+       RETURNING id, business_id`,
+      [userId]
+    );
+
+    for (const entry of entriesRes.rows) {
+      await queueRedis.removeEntry(entry.business_id, entry.id, userId);
+      await queueService.broadcastQueueState(entry.business_id);
+      await queueService.updateWaitingPositions(entry.business_id);
+    }
   } catch (err: any) {
     logger.error({ err: err?.message || err, userId }, '[QueueModule] Failed to evict blocked user from queues');
   }

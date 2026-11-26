@@ -19,7 +19,7 @@ COPY frontend ./frontend
 RUN npm --prefix frontend run build
 
 # Stage 2: Production Nginx Server
-FROM nginx:1.26-alpine AS runner
+FROM nginx:1.29-alpine AS runner
 
 RUN apk upgrade --no-cache
 

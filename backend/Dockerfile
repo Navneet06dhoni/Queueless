@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
@@ -29,7 +29,7 @@ RUN npm --prefix packages/contracts run build && \
     npm --prefix backend run build
 
 # Stage 2: Production Dependencies
-FROM node:22-alpine AS prod-deps
+FROM node:26-alpine AS prod-deps
 
 WORKDIR /app
 
@@ -46,7 +46,7 @@ COPY services/queue-service/package*.json ./services/queue-service/
 RUN npm ci --omit=dev --workspace=backend --include-workspace-root --ignore-scripts
 
 # Stage 3: Production Runner
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 
 # Hardening: remove package managers from runtime to eliminate unnecessary dev tooling and CVEs
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn*

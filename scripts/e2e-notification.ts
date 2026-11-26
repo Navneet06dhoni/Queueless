@@ -23,6 +23,62 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function checkGatewayStackReadiness(): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const gwRes = await fetch(`${GATEWAY_URL}/healthz`, { signal: AbortSignal.timeout(2000) });
+    if (!gwRes.ok) return { ok: false, reason: `Gateway /healthz returned ${gwRes.status}` };
+
+    const coreRes = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(2000) });
+    if (!coreRes.ok) return { ok: false, reason: `Core via Gateway /api/health returned ${coreRes.status}` };
+
+    const queueRes = await fetch(`${GATEWAY_URL}/api/queue/00000000-0000-0000-0000-000000000000/status`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (queueRes.status === 502 || queueRes.status === 503) {
+      return { ok: false, reason: `Queue service via Gateway returned ${queueRes.status}` };
+    }
+
+    const notifRes = await fetch(`${GATEWAY_URL}/api/notifications`, { signal: AbortSignal.timeout(2000) });
+    if (notifRes.status === 502 || notifRes.status === 503) {
+      return { ok: false, reason: `Notification service via Gateway returned ${notifRes.status}` };
+    }
+
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, reason: err.message };
+  }
+}
+
+async function loginWithRetry(targetUrl: string, email: string, pass: string, maxRetries = 6): Promise<{ token: string; id: string }> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const res = await fetch(`${targetUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        token: (data.data?.accessToken || data.accessToken) as string,
+        id: (data.data?.user?.id || data.user?.id) as string,
+      };
+    }
+
+    if (res.status === 429) {
+      const retryAfterHeader = res.headers.get('Retry-After');
+      const waitSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) || 12 : 12;
+      console.log(`   ⏳ Rate limit (429) encountered for ${email}. Waiting ${waitSeconds}s according to Retry-After header before retry (attempt ${attempt}/${maxRetries})...`);
+      await sleep(waitSeconds * 1000 + 500);
+      continue;
+    }
+
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Login failed for ${email} with status ${res.status}: ${errText}`);
+  }
+  throw new Error(`Login failed for ${email} after ${maxRetries} attempts due to rate limit.`);
+}
+
 async function isBackendRunning(): Promise<boolean> {
   try {
     const res = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
@@ -59,38 +115,45 @@ function killProcessTree(pid: number) {
 async function runE2ENotifications() {
   console.log('🧪 Starting End-to-End Notification Service Verification...\n');
 
-  let targetBackendUrl = BACKEND_URL;
-  try {
-    const gwHealth = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
-    if (gwHealth.ok) {
-      targetBackendUrl = GATEWAY_URL;
-      console.log(`ℹ️  Containerised core detected via Gateway (${GATEWAY_URL}).`);
-    }
-  } catch {}
-
+  const useHostBackend = process.argv.includes('--host-backend');
+  let targetBackendUrl = GATEWAY_URL;
   let backendProc: ChildProcess | null = null;
-  const alreadyRunning = await isBackendRunning();
 
-  if (!alreadyRunning) {
-    console.log('📦 Launching monolith backend on port 5000 (NOTIFICATIONS_MODE=service)...');
-    const serverScript = path.resolve(__dirname, '../backend/src/server.ts');
-    let backendErr = '';
-    backendProc = spawn('npx', ['tsx', serverScript], {
-      cwd: path.resolve(__dirname, '..'),
-      shell: true,
-      stdio: 'pipe',
-      env: { ...process.env, PORT: '5000', NOTIFICATIONS_MODE: 'service', EVENT_TRANSPORT: 'rabbitmq' },
-    });
-    backendProc.stderr?.on('data', (d) => {
-      backendErr += d.toString();
-    });
+  if (useHostBackend) {
+    console.log('🎯 Target: Host Backend (http://localhost:5000) [--host-backend flag active]\n');
+    targetBackendUrl = BACKEND_URL;
+    const alreadyRunning = await isBackendRunning();
+    if (!alreadyRunning) {
+      console.log('📦 Launching monolith backend on port 5000 (NOTIFICATIONS_MODE=service)...');
+      const serverScript = path.resolve(__dirname, '../backend/src/server.ts');
+      let backendErr = '';
+      backendProc = spawn('npx', ['tsx', serverScript], {
+        cwd: path.resolve(__dirname, '..'),
+        shell: true,
+        stdio: 'pipe',
+        env: { ...process.env, PORT: '5000', NOTIFICATIONS_MODE: 'service', EVENT_TRANSPORT: 'rabbitmq' },
+      });
+      backendProc.stderr?.on('data', (d) => {
+        backendErr += d.toString();
+      });
 
-    const ready = await waitForBackend(30000);
-    if (!ready) {
-      if (backendProc.pid) killProcessTree(backendProc.pid);
-      throw new Error(`Failed to start monolith backend on port 5000 within 30 seconds. Stderr: ${backendErr}`);
+      const ready = await waitForBackend(30000);
+      if (!ready) {
+        if (backendProc.pid) killProcessTree(backendProc.pid);
+        throw new Error(`Failed to start monolith backend on port 5000 within 30 seconds. Stderr: ${backendErr}`);
+      }
+      console.log('✅ Monolith backend is up on http://localhost:5000\n');
+    } else {
+      console.log('ℹ️  Monolith backend is already running on port 5000.\n');
     }
-    console.log('✅ Monolith backend is up on http://localhost:5000\n');
+  } else {
+    console.log('🎯 Target: Gateway (http://localhost:8080) [Containerized Stack]\n');
+    const readiness = await checkGatewayStackReadiness();
+    if (!readiness.ok) {
+      console.error(`❌ Stack is not healthy: ${readiness.reason}`);
+      console.error('Stack is not healthy: run docker compose up -d and check docker compose ps');
+      process.exit(1);
+    }
   }
 
   try {
@@ -104,34 +167,7 @@ async function runE2ENotifications() {
     // 1. Authenticate customer 1 & customer 2
     console.log('🔑 Authenticating test users...');
     const loginUser = async (email: string, pass: string) => {
-      try {
-        const res = await fetch(`${targetBackendUrl}/api/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password: pass }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return {
-            token: data.data?.accessToken || data.accessToken,
-            id: data.data?.user?.id || data.user?.id,
-          };
-        }
-        if (res.status === 429) {
-          console.log(`   ℹ️  Rate limit (429) encountered for ${email} on /api/auth/login; using direct cryptographic token signing with JWT_ACCESS_SECRET.`);
-        }
-      } catch {}
-
-      const uRes = await pool.query('SELECT id, name, email, role FROM users WHERE email = $1', [email]);
-      if (uRes.rows.length === 0) throw new Error(`User not found: ${email}`);
-      const u = uRes.rows[0];
-      const jwtModule = (await import('jsonwebtoken')).default;
-      const token = jwtModule.sign(
-        { sub: u.id, role: u.role, name: u.name, email: u.email },
-        process.env.JWT_ACCESS_SECRET!,
-        { expiresIn: '15m' }
-      );
-      return { token, id: u.id };
+      return loginWithRetry(targetBackendUrl, email, pass);
     };
 
     const user1 = await loginUser('customer1@example.com', 'CustomerPassword123');

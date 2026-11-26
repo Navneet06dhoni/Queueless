@@ -37,8 +37,25 @@ async function createServiceDbs() {
 
   console.log('🔄 Connecting to PostgreSQL as admin to initialize service databases...');
 
-  const client = new Client({ connectionString: adminUrl });
-  await client.connect();
+  let client!: Client;
+  let connected = false;
+  let attempts = 0;
+  const maxAttempts = 15;
+
+  while (!connected && attempts < maxAttempts) {
+    try {
+      attempts++;
+      client = new Client({ connectionString: adminUrl });
+      await client.connect();
+      connected = true;
+    } catch (err: any) {
+      if (attempts >= maxAttempts) {
+        throw err;
+      }
+      console.log(`⏳ Waiting for PostgreSQL to accept connections (attempt ${attempts}/${maxAttempts})...`);
+      await new Promise((res) => setTimeout(res, 2000));
+    }
+  }
 
   try {
     // 1. Role notification_user

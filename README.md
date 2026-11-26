@@ -78,6 +78,9 @@ Verify services are running:
 - RabbitMQ Management on [http://localhost:15672](http://localhost:15672) (`guest` / `guest`)
 - MailHog Web UI on [http://localhost:8025](http://localhost:8025)
 
+> [!NOTE]
+> **Sticky Sessions & Gateway Upstreams:** In single-instance mode, Gateway uses dynamic DNS resolution (`resolver 127.0.0.11 valid=5s`) via variables; sticky sessions (`ip_hash`) return via an upstream load-balancing pool when queue-service scales to multiple instances.
+
 ### Step 4: Run Migrations & Seed Data
 ```bash
 # Apply raw SQL migrations up

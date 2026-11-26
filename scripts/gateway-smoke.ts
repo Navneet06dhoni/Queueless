@@ -22,6 +22,59 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function checkGatewayStackReadiness(): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const gwRes = await fetch(`${GATEWAY_URL}/healthz`, { signal: AbortSignal.timeout(2000) });
+    if (!gwRes.ok) return { ok: false, reason: `Gateway /healthz returned ${gwRes.status}` };
+
+    const coreRes = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(2000) });
+    if (!coreRes.ok) return { ok: false, reason: `Core via Gateway /api/health returned ${coreRes.status}` };
+
+    const queueRes = await fetch(`${GATEWAY_URL}/api/queue/00000000-0000-0000-0000-000000000000/status`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (queueRes.status === 502 || queueRes.status === 503) {
+      return { ok: false, reason: `Queue service via Gateway returned ${queueRes.status}` };
+    }
+
+    const notifRes = await fetch(`${GATEWAY_URL}/api/notifications`, { signal: AbortSignal.timeout(2000) });
+    if (notifRes.status === 502 || notifRes.status === 503) {
+      return { ok: false, reason: `Notification service via Gateway returned ${notifRes.status}` };
+    }
+
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, reason: err.message };
+  }
+}
+
+async function loginWithRetry(targetUrl: string, email: string, pass: string, maxRetries = 6): Promise<{ accessToken: string; user?: any }> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const res = await fetch(`${targetUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return { accessToken: data.data?.accessToken || data.accessToken, user: data.data?.user || data.user };
+    }
+
+    if (res.status === 429) {
+      const retryAfterHeader = res.headers.get('Retry-After');
+      const waitSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) || 12 : 12;
+      console.log(`   ⏳ Rate limit (429) encountered for ${email}. Waiting ${waitSeconds}s according to Retry-After header before retry (attempt ${attempt}/${maxRetries})...`);
+      await sleep(waitSeconds * 1000 + 500);
+      continue;
+    }
+
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Login failed for ${email} with status ${res.status}: ${errText}`);
+  }
+  throw new Error(`Login failed for ${email} after ${maxRetries} attempts due to rate limit.`);
+}
+
 async function isBackendRunning(): Promise<boolean> {
   try {
     const res = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
@@ -58,38 +111,43 @@ function killProcessTree(pid: number) {
 async function runSmokeTests() {
   console.log('🚀 Starting Gateway Smoke Tests...\n');
 
-  let targetBackendUrl = BACKEND_URL;
-  try {
-    const gwHealth = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
-    if (gwHealth.ok) {
-      targetBackendUrl = GATEWAY_URL;
-      console.log(`ℹ️  Containerised core detected via Gateway (${GATEWAY_URL}).`);
-    }
-  } catch {}
-
+  const useHostBackend = process.argv.includes('--host-backend');
+  let targetBackendUrl = GATEWAY_URL;
   let backendProc: ChildProcess | null = null;
-  const alreadyRunning = await isBackendRunning();
   let weStartedBackend = false;
 
-  if (!alreadyRunning) {
-    console.log('📦 Launching backend server on port 5000...');
-    const serverScript = path.resolve(__dirname, '../backend/src/server.ts');
-    backendProc = spawn('npx', ['tsx', serverScript], {
-      cwd: path.resolve(__dirname, '..'),
-      shell: true,
-      stdio: 'pipe',
-      env: { ...process.env, PORT: '5000', NODE_ENV: 'test', TRUST_PROXY: '1' },
-    });
+  if (useHostBackend) {
+    console.log('🎯 Target: Host Backend (http://localhost:5000) [--host-backend flag active]\n');
+    targetBackendUrl = BACKEND_URL;
+    const alreadyRunning = await isBackendRunning();
+    if (!alreadyRunning) {
+      console.log('📦 Launching backend server on port 5000...');
+      const serverScript = path.resolve(__dirname, '../backend/src/server.ts');
+      backendProc = spawn('npx', ['tsx', serverScript], {
+        cwd: path.resolve(__dirname, '..'),
+        shell: true,
+        stdio: 'pipe',
+        env: { ...process.env, PORT: '5000', NODE_ENV: 'test', TRUST_PROXY: '1' },
+      });
 
-    const backendReady = await waitForBackend();
-    if (!backendReady) {
-      if (backendProc.pid) killProcessTree(backendProc.pid);
-      throw new Error('❌ Failed to start backend within 15 seconds');
+      const backendReady = await waitForBackend();
+      if (!backendReady) {
+        if (backendProc.pid) killProcessTree(backendProc.pid);
+        throw new Error('❌ Failed to start backend within 15 seconds');
+      }
+      weStartedBackend = true;
+      console.log('✅ Backend started on http://localhost:5000\n');
+    } else {
+      console.log('ℹ️  Backend is already running on http://localhost:5000. Reusing existing instance.\n');
     }
-    weStartedBackend = true;
-    console.log('✅ Backend started on http://localhost:5000\n');
   } else {
-    console.log('ℹ️  Backend is already running on http://localhost:5000. Reusing existing instance.\n');
+    console.log('🎯 Target: Gateway (http://localhost:8080) [Containerized Stack]\n');
+    const readiness = await checkGatewayStackReadiness();
+    if (!readiness.ok) {
+      console.error(`❌ Stack is not healthy: ${readiness.reason}`);
+      console.error('Stack is not healthy: run docker compose up -d and check docker compose ps');
+      process.exit(1);
+    }
   }
 
   let allPassed = true;
@@ -151,12 +209,8 @@ async function runSmokeTests() {
         [custEmail, passHash]
       );
       custId = uRes.rows[0].id;
-      const jwtMod = (await import('jsonwebtoken')).default;
-      custToken = jwtMod.sign(
-        { sub: custId, role: 'customer', name: 'Smoke Customer', email: custEmail },
-        process.env.JWT_ACCESS_SECRET!,
-        { expiresIn: '15m' }
-      );
+      const loginRes = await loginWithRetry(targetBackendUrl, custEmail, custPass);
+      custToken = loginRes.accessToken;
     }
 
     // Send valid token with SPOOFED headers through gateway
@@ -321,28 +375,12 @@ async function runSmokeTests() {
     const adminPassHash = await bcrypt.hash(adminPass, 12);
     await pool.query(
       `INSERT INTO users (name, email, password_hash, role)
-       VALUES ('Admin Smoke', $1, $2, 'admin')`,
+       VALUES ('Admin Smoke', $1, $2, 'admin')
+       ON CONFLICT (email) DO UPDATE SET password_hash = $2`,
       [adminEmail, adminPassHash]
     );
-    let adminToken = '';
-    const adminLoginRes = await fetch(`${targetBackendUrl}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: adminEmail, password: adminPass }),
-    });
-    if (adminLoginRes.ok) {
-      const adminLoginData = await adminLoginRes.json();
-      adminToken = adminLoginData.accessToken;
-    } else {
-      const adminRow = await pool.query('SELECT id, role, name, email FROM users WHERE email = $1', [adminEmail]);
-      const a = adminRow.rows[0];
-      const jwtMod = (await import('jsonwebtoken')).default;
-      adminToken = jwtMod.sign(
-        { sub: a.id, role: a.role, name: a.name, email: a.email },
-        process.env.JWT_ACCESS_SECRET!,
-        { expiresIn: '15m' }
-      );
-    }
+    const adminLoginRes = await loginWithRetry(targetBackendUrl, adminEmail, adminPass);
+    const adminToken = adminLoginRes.accessToken;
 
     // Block customer
     const blockRes = await fetch(`${GATEWAY_URL}/api/admin/users/${custId}/block`, {

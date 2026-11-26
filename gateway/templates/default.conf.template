@@ -1,27 +1,18 @@
-upstream backend_service {
-    server ${BACKEND_UPSTREAM};
-    keepalive 32;
-}
-
-upstream notification_service {
-    server ${NOTIFICATION_UPSTREAM};
-    keepalive 16;
-}
-
-upstream queue_service {
-    ip_hash; # Sticky sessions for Socket.io HTTP long-polling handshakes prior to WebSocket upgrade
-    server ${QUEUE_UPSTREAM};
-    keepalive 32;
-}
-
-upstream frontend_service {
-    server ${FRONTEND_UPSTREAM};
-    keepalive 32;
-}
+# Note: Sticky sessions (ip_hash) will return via an upstream load-balancing pool when queue-service scales to multiple instances.
 
 server {
     listen 8080;
     server_name _;
+
+    # Dynamic DNS resolution using Docker's internal DNS (127.0.0.11) with 5s TTL and 500ms timeout
+    resolver 127.0.0.11 valid=5s ipv6=off;
+    resolver_timeout 500ms;
+
+    # Upstream targets as variables to enforce dynamic DNS re-resolution across container recreations
+    set $core http://${BACKEND_UPSTREAM};
+    set $notification http://${NOTIFICATION_UPSTREAM};
+    set $queue http://${QUEUE_UPSTREAM};
+    set $frontend http://${FRONTEND_UPSTREAM};
 
     # Default proxy timeouts for fast failure on dead upstreams (<1000ms)
     proxy_connect_timeout 500ms;
@@ -79,6 +70,7 @@ server {
     location = /error_429 {
         internal;
         default_type application/json;
+        add_header Retry-After 12 always;
         return 429 '{"error":{"code":"RATE_LIMITED","message":"Too many requests, please try again later","requestId":"$gateway_request_id"}}';
     }
 
@@ -110,7 +102,7 @@ server {
     # (2) Internal auth verification endpoint (used ONLY by auth_request)
     location = /internal/auth-verify {
         internal;
-        proxy_pass http://backend_service/api/auth/verify;
+        proxy_pass $core/api/auth/verify;
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
         proxy_set_header X-Original-URI $request_uri;
@@ -135,14 +127,14 @@ server {
     # (3) Rate-limited auth routes (edge limit: 5 req/min, burst 2, nodelay)
     location = /api/auth/login {
         limit_req zone=auth_limit burst=2 nodelay;
-        proxy_pass http://backend_service;
+        proxy_pass $core$request_uri;
         proxy_connect_timeout 500ms;
         proxy_read_timeout 5s;
     }
 
     location = /api/auth/register {
         limit_req zone=auth_limit burst=2 nodelay;
-        proxy_pass http://backend_service;
+        proxy_pass $core$request_uri;
         proxy_connect_timeout 500ms;
         proxy_read_timeout 5s;
     }
@@ -155,7 +147,7 @@ server {
         auth_request_set $auth_user_name $upstream_http_x_user_name;
         auth_request_set $auth_user_email $upstream_http_x_user_email;
 
-        proxy_pass http://backend_service;
+        proxy_pass $core$request_uri;
         proxy_set_header X-User-Id $auth_user_id;
         proxy_set_header X-User-Role $auth_user_role;
         proxy_set_header X-User-Name $auth_user_name;
@@ -178,7 +170,7 @@ server {
         auth_request_set $auth_user_name $upstream_http_x_user_name;
         auth_request_set $auth_user_email $upstream_http_x_user_email;
 
-        proxy_pass http://notification_service;
+        proxy_pass $notification$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -201,7 +193,7 @@ server {
         auth_request_set $auth_user_name $upstream_http_x_user_name;
         auth_request_set $auth_user_email $upstream_http_x_user_email;
 
-        proxy_pass http://notification_service;
+        proxy_pass $notification$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -219,7 +211,7 @@ server {
     # (6) Public queue status route (anonymous, no auth_request)
     location ~* ^/api/queue/([a-f0-9\-]+)/status$ {
         limit_req zone=api_limit burst=10 nodelay;
-        proxy_pass http://queue_service;
+        proxy_pass $queue$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -243,7 +235,7 @@ server {
         auth_request_set $auth_user_name $upstream_http_x_user_name;
         auth_request_set $auth_user_email $upstream_http_x_user_email;
 
-        proxy_pass http://queue_service;
+        proxy_pass $queue$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -260,7 +252,7 @@ server {
 
     # (8) WebSocket proxying for Socket.io routed to queue_service
     location /socket.io/ {
-        proxy_pass http://queue_service;
+        proxy_pass $queue$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
@@ -272,21 +264,22 @@ server {
         proxy_set_header X-User-Name "";
         proxy_set_header X-User-Email "";
         proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
+        proxy_connect_timeout 500ms;
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }
 
-    # (6) General API proxy with rate limiting (20 req/s, burst 10, nodelay)
+    # (9) General API proxy with rate limiting (20 req/s, burst 10, nodelay)
     location /api/ {
         limit_req zone=api_limit burst=10 nodelay;
-        proxy_pass http://backend_service;
+        proxy_pass $core$request_uri;
         proxy_connect_timeout 500ms;
         proxy_read_timeout 10s;
     }
 
     # Default frontend SPA proxying
     location / {
-        proxy_pass http://frontend_service;
+        proxy_pass $frontend$request_uri;
         proxy_connect_timeout 500ms;
         proxy_read_timeout 10s;
     }

@@ -34,43 +34,53 @@ export class NotificationConsumerManager {
   }
 
   async start(): Promise<void> {
-    const connected = await this.rmqClient.connect();
-    if (!connected) {
-      logger.warn('Could not connect to RabbitMQ broker immediately; will retry on demand');
+    this.rmqClient.onConnect(async () => {
+      // Start consuming from notification.q
+      await this.rmqClient.startConsumer(
+        QUEUES.NOTIFICATION,
+        'notification_microservice',
+        async (envelope: any) => {
+          const type = envelope.type;
+          switch (type) {
+            case 'booking.confirmed':
+            case 'appointment.booked':
+              await notificationService.handleBookingConfirmed(envelope);
+              break;
+            case 'booking.cancelled':
+            case 'appointment.cancelled':
+              await notificationService.handleBookingCancelled(envelope);
+              break;
+            case 'booking.rescheduled':
+              await notificationService.handleBookingRescheduled(envelope);
+              break;
+            case 'appointment.reminder_due':
+              await notificationService.handleAppointmentReminderDue(envelope);
+              break;
+            case 'business.status_changed':
+              await notificationService.handleBusinessStatusChanged(envelope);
+              break;
+            case 'queue.advanced':
+              await notificationService.handleQueueAdvanced(envelope);
+              break;
+            default:
+              logger.info({ eventType: type }, '[NotificationConsumer] Event ignored');
+          }
+        }
+      );
+    });
+
+    let connected = await this.rmqClient.connect();
+    let attempts = 0;
+    while (!connected && attempts < 15) {
+      attempts++;
+      logger.warn(`[RabbitMQ] Waiting for broker to accept connections (attempt ${attempts}/15)...`);
+      await new Promise((r) => setTimeout(r, 2000));
+      connected = await this.rmqClient.connect();
     }
 
-    // Start consuming from notification.q
-    await this.rmqClient.startConsumer(
-      QUEUES.NOTIFICATION,
-      'notification_microservice',
-      async (envelope: any) => {
-        const type = envelope.type;
-        switch (type) {
-          case 'booking.confirmed':
-          case 'appointment.booked':
-            await notificationService.handleBookingConfirmed(envelope);
-            break;
-          case 'booking.cancelled':
-          case 'appointment.cancelled':
-            await notificationService.handleBookingCancelled(envelope);
-            break;
-          case 'booking.rescheduled':
-            await notificationService.handleBookingRescheduled(envelope);
-            break;
-          case 'appointment.reminder_due':
-            await notificationService.handleAppointmentReminderDue(envelope);
-            break;
-          case 'business.status_changed':
-            await notificationService.handleBusinessStatusChanged(envelope);
-            break;
-          case 'queue.advanced':
-            await notificationService.handleQueueAdvanced(envelope);
-            break;
-          default:
-            logger.info({ eventType: type }, '[NotificationConsumer] Event ignored');
-        }
-      }
-    );
+    if (!connected) {
+      logger.warn('Could not connect to RabbitMQ broker after retries; will retry on demand');
+    }
 
     // Start outbox relay polling (every 500ms)
     this.outboxRelay.start(500);

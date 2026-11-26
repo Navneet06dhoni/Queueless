@@ -377,12 +377,16 @@ services:
     depends_on:
       frontend:
         condition: service_healthy
+        restart: true
       core:
         condition: service_healthy
+        restart: true
       notification-service:
         condition: service_healthy
+        restart: true
       queue-service:
         condition: service_healthy
+        restart: true
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz | grep ok || exit 1"]
       interval: 5s

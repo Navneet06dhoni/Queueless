@@ -1,8 +1,11 @@
+process.env.NODE_ENV = 'test';
+
 import http from 'http';
 import { AddressInfo } from 'net';
 import request from 'supertest';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { createQueueApp } from '../src/app';
+import { config } from '../src/config';
 import { pool, query, assertTestDatabaseName, connectionString } from '../src/db';
 import { redis, queueRedisClient } from '../src/redis';
 import { queueService } from '../src/service';
@@ -22,7 +25,7 @@ describe('Queue Service Suite', () => {
   let httpServer: http.Server;
   let serverPort: number;
 
-  const validInternalToken = 'queueless-internal-gateway-secret-key-32ch';
+  const validInternalToken = config.INTERNAL_TOKEN;
 
   const BIZ_1 = '11111111-1111-1111-1111-111111111111';
   const BIZ_2 = '22222222-2222-2222-2222-222222222222';
@@ -761,6 +764,32 @@ describe('Queue Service Suite', () => {
       expect(paths).toContain('/api/queue/{businessId}/next');
       expect(paths).toContain('/internal/analytics/business/{id}/summary');
       expect(paths).toContain('/internal/stats');
+    });
+
+    describe('Secret Configuration Validation (INTERNAL_TOKEN, QUEUE_DB_PASSWORD)', () => {
+      const { configSchema } = require('../src/config');
+
+      const baseValid = {
+        NODE_ENV: 'test',
+        INTERNAL_TOKEN: 'a'.repeat(32),
+        QUEUE_DB_PASSWORD: 'b'.repeat(32),
+      };
+
+      test('accepts valid secrets >= 32 characters', () => {
+        expect(configSchema.safeParse(baseValid).success).toBe(true);
+      });
+
+      test('rejects empty, short, or CHANGE_ME for INTERNAL_TOKEN', () => {
+        expect(configSchema.safeParse({ ...baseValid, INTERNAL_TOKEN: '' }).success).toBe(false);
+        expect(configSchema.safeParse({ ...baseValid, INTERNAL_TOKEN: 'short_token' }).success).toBe(false);
+        expect(configSchema.safeParse({ ...baseValid, INTERNAL_TOKEN: 'CHANGE_ME' }).success).toBe(false);
+      });
+
+      test('rejects empty, short, or CHANGE_ME for QUEUE_DB_PASSWORD', () => {
+        expect(configSchema.safeParse({ ...baseValid, QUEUE_DB_PASSWORD: '' }).success).toBe(false);
+        expect(configSchema.safeParse({ ...baseValid, QUEUE_DB_PASSWORD: 'short_password' }).success).toBe(false);
+        expect(configSchema.safeParse({ ...baseValid, QUEUE_DB_PASSWORD: 'CHANGE_ME' }).success).toBe(false);
+      });
     });
   });
 });

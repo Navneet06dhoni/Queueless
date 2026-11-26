@@ -1,5 +1,7 @@
 # QueueLess - Smart Appointment Booking & Live Virtual Queue Platform
 
+[![CI](https://github.com/navneet06dhoni/QueueLess/actions/workflows/ci.yml/badge.svg)](https://github.com/navneet06dhoni/QueueLess/actions/workflows/ci.yml)
+
 QueueLess is a modular monolith platform designed for local businesses in India—small clinics, salons, diagnostic centers, and spas—to eliminate physical waiting lines through smart appointment slot booking, real-time virtual queues, owner desk operations, and platform administration.
 
 ---
@@ -106,14 +108,14 @@ Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 | `DB_HOST` | PostgreSQL host | `localhost` | Yes |
 | `DB_PORT` | PostgreSQL port | `5432` | No |
 | `DB_USER` | PostgreSQL user | `postgres` | Yes |
-| `DB_PASSWORD` | PostgreSQL password | `postgrespassword` | Yes |
+| `DB_PASSWORD` | PostgreSQL password | `(Set secure password)` | Yes |
 | `DB_NAME` | PostgreSQL database name | `queueless` | Yes |
-| `TEST_DATABASE_URL` | PostgreSQL connection string for test suite | `postgresql://postgres:postgrespassword@localhost:5432/queueless_test` | Yes |
+| `TEST_DATABASE_URL` | PostgreSQL connection string for test suite | `postgresql://postgres:<password>@localhost:5432/queueless_test` | Yes |
 | `REDIS_HOST` | Redis cache host | `localhost` | Yes |
 | `REDIS_PORT` | Redis cache port | `6379` | No |
 | `REDIS_PASSWORD` | Redis auth password (blank if unauthenticated) | `""` | No |
-| `JWT_ACCESS_SECRET` | Secret key for signing 15-min JWT access tokens ($\ge$ 16 chars) | *(Set secure secret)* | Yes |
-| `JWT_REFRESH_SECRET`| Secret key for signing 7-day refresh tokens ($\ge$ 16 chars) | *(Set secure secret)* | Yes |
+| `JWT_ACCESS_SECRET` | Secret key for signing 15-min JWT access tokens ($\ge$ 32 chars) | *(Set secure secret)* | Yes |
+| `JWT_REFRESH_SECRET`| Secret key for signing 7-day refresh tokens ($\ge$ 32 chars) | *(Set secure secret)* | Yes |
 | `CANCELLATION_CUTOFF_MINUTES` | Window before start time when customer cancellation is locked | `60` | No |
 | `CHECKIN_EARLY_MINUTES` | Minutes before slot start time when customer can check in | `15` | No |
 | `CHECKIN_GRACE_MINUTES` | Minutes after slot start time before check-in expires | `15` | No |
@@ -310,3 +312,35 @@ npm run seed
 **Solution:**
 The backend automatically rebuilds all active virtual queues into Redis from `queue_history` on startup:
 Simply restart the backend server (`npm run dev:backend`), or restart via Docker.
+
+---
+
+## 🚀 CI/CD & Automation
+
+QueueLess employs production-grade GitHub Actions workflows ensuring strict quality gates, security, and zero downtime deployments:
+
+### Workflows Overview
+
+1. **Continuous Integration (`.github/workflows/ci.yml`)**:
+   - **Triggers**: On push and pull requests targeting the `main` branch.
+   - **Concurrency**: Fast-fails and cancels superseded in-progress PR workflow runs.
+   - **Jobs**:
+     - `lint-and-unit`: Validates Frontend code with ESLint, runs unit tests across contracts, common, messaging, notification-service, queue-service, backend monolith, and frontend Vitest suites.
+     - `integration`: Spins up containerized services (`postgres:16-alpine`, `redis:7-alpine`, `rabbitmq:3-management`), executes schema migrations and runs integration suites.
+     - `gateway-lint`: Employs official `nginx:1.26-alpine` to validate Nginx configuration templates via `envsubst` and `nginx -t`.
+     - `build`: Validates TypeScript compilation and builds all workspaces and web distribution bundles.
+     - `docker`: Utilizes Docker Buildx with GitHub Actions layer caching (`type=gha`), builds OCI images, and scans each image with Aqua Security's **Trivy** for High/Critical vulnerabilities.
+
+2. **Container Release (`.github/workflows/release.yml`)**:
+   - **Triggers**: On version tags (`v*`).
+   - **Destination**: Publishes versioned and git-SHA-tagged multi-stage container images to GitHub Container Registry (`ghcr.io`).
+   - **Security**: Embeds software bill of materials (SBOM) and SLSA provenance attestation.
+
+3. **Nightly & On-Demand E2E (`.github/workflows/e2e.yml`)**:
+   - **Triggers**: Nightly schedule (02:00 UTC) and manual on-demand execution (`workflow_dispatch`).
+   - **Scope**: Spins up the full Docker Compose stack, validates Gateway reverse-proxy routes, executes full end-to-end user journeys, and tests three-way service outage resilience under simulated failure conditions. Uploads diagnostic logs and proof artifacts.
+
+4. **Automated Dependency Maintenance & PR Checks**:
+   - **Dependabot (`.github/dependabot.yml`)**: Weekly dependency scans across npm workspaces, Dockerfile base images, and GitHub Actions.
+   - **PR Template (`.github/pull_request_template.md`)**: Enforces pre-commit secret scans (`npm run check:secrets`), architectural boundary checks, and test evidence.
+

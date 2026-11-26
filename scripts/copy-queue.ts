@@ -2,12 +2,15 @@ import { Pool } from 'pg';
 
 const sourceDbUrl =
   process.env.SOURCE_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  'postgresql://postgres:postgrespassword@localhost:5432/queueless';
+  process.env.DATABASE_URL;
 
 const targetDbUrl =
   process.env.QUEUE_DATABASE_URL ||
-  'postgresql://queue_user:queue_password@localhost:5432/queue_db';
+  process.env.DEST_DATABASE_URL;
+
+if (!sourceDbUrl || !targetDbUrl) {
+  throw new Error('SOURCE_DATABASE_URL (or DATABASE_URL) and QUEUE_DATABASE_URL (or DEST_DATABASE_URL) are required');
+}
 
 async function copyQueueData() {
   console.log('🔄 Starting Queue Data Migration from Monolith to Queue Service DB...');

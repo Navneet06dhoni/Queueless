@@ -1,15 +1,39 @@
+import dotenv from 'dotenv';
+import path from 'path';
 import { Client } from 'pg';
 
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 async function createServiceDbs() {
+  const requiredSecrets = [
+    { name: 'POSTGRES_PASSWORD', value: process.env.POSTGRES_PASSWORD },
+    { name: 'NOTIFICATION_DB_PASSWORD', value: process.env.NOTIFICATION_DB_PASSWORD },
+    { name: 'QUEUE_DB_PASSWORD', value: process.env.QUEUE_DB_PASSWORD },
+    { name: 'INTERNAL_TOKEN', value: process.env.INTERNAL_TOKEN },
+    { name: 'JWT_ACCESS_SECRET', value: process.env.JWT_ACCESS_SECRET },
+    { name: 'JWT_REFRESH_SECRET', value: process.env.JWT_REFRESH_SECRET },
+  ];
+
+  for (const sec of requiredSecrets) {
+    if (!sec.value || sec.value.trim() === '' || sec.value === 'CHANGE_ME') {
+      console.error(`\n❌ [FATAL] Required secret ${sec.name} is missing, empty, or set to placeholder 'CHANGE_ME'.`);
+      console.error(`👉 Please run 'npm run gen:env' or configure your .env file with secure cryptographically random secrets before starting containers.\n`);
+      process.exit(1);
+    }
+  }
+
+  const pgUser = process.env.POSTGRES_USER || process.env.DB_USER || 'postgres';
+  const pgPassword = process.env.POSTGRES_PASSWORD || process.env.DB_PASSWORD || '';
+  const pgHost = process.env.DB_HOST || 'localhost';
+  const pgPort = process.env.DB_PORT || 5432;
+
   const adminUrl =
     process.env.ADMIN_DATABASE_URL ||
     (process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/\/[^/]+$/, '/postgres') : null) ||
-    (process.env.DB_HOST
-      ? `postgresql://${process.env.DB_USER || 'postgres'}:${process.env.DB_PASSWORD || 'postgrespassword'}@${process.env.DB_HOST}:${process.env.DB_PORT || 5432}/postgres`
-      : 'postgresql://postgres:postgrespassword@localhost:5432/postgres');
+    `postgresql://${pgUser}:${pgPassword}@${pgHost}:${pgPort}/postgres`;
 
-  const notifPassword = process.env.NOTIFICATION_DB_PASSWORD || 'notification_password';
-  const queuePassword = process.env.QUEUE_DB_PASSWORD || 'queue_password';
+  const notifPassword = process.env.NOTIFICATION_DB_PASSWORD || '';
+  const queuePassword = process.env.QUEUE_DB_PASSWORD || '';
 
   console.log('🔄 Connecting to PostgreSQL as admin to initialize service databases...');
 

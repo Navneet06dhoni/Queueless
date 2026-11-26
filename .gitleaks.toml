@@ -1,0 +1,12 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore local environment files and build artifacts"
+paths = [
+    '''(^|/)\.env$''',
+    '''(^|/)\.env\.test$''',
+    '''(^|/)node_modules/''',
+    '''(^|/)dist/''',
+    '''(^|/)\.git/'''
+]

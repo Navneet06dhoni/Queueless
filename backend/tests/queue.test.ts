@@ -16,6 +16,7 @@ import { setupTestDb, TestDbInstance } from './setupTestDb';
 describe('Live Virtual Queue & Hybrid Check-in Module', () => {
   const origQueueMode = config.QUEUE_MODE;
   const origSocketMode = config.SOCKET_MODE;
+  const origCheckinEarly = config.CHECKIN_EARLY_MINUTES;
   let testDb: TestDbInstance;
   let app: ReturnType<typeof createApp>;
   let httpServer: http.Server;
@@ -39,6 +40,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
   beforeAll(async () => {
     (config as any).QUEUE_MODE = 'embedded';
     (config as any).SOCKET_MODE = 'embedded';
+    (config as any).CHECKIN_EARLY_MINUTES = 15;
     testDb = await setupTestDb();
     app = createApp();
 
@@ -58,6 +60,7 @@ describe('Live Virtual Queue & Hybrid Check-in Module', () => {
   afterAll(async () => {
     (config as any).QUEUE_MODE = origQueueMode;
     (config as any).SOCKET_MODE = origSocketMode;
+    (config as any).CHECKIN_EARLY_MINUTES = origCheckinEarly;
     clock.resetNow();
     await closeSocketServer();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));

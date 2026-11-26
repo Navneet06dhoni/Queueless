@@ -12,8 +12,8 @@ dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
 const GATEWAY_URL = 'http://localhost:8080';
 const BACKEND_URL = 'http://localhost:5000';
 const MAILHOG_URL = 'http://localhost:8025';
-const pgPass = process.env.POSTGRES_PASSWORD || 'postgrespassword';
-const queuePass = process.env.QUEUE_DB_PASSWORD || 'queue_password';
+const pgPass = process.env.POSTGRES_PASSWORD || '';
+const queuePass = process.env.QUEUE_DB_PASSWORD || '';
 const DB_URL = `postgresql://postgres:${pgPass}@localhost:5432/queueless`;
 const QUEUE_DB_URL = `postgresql://queue_user:${queuePass}@localhost:5432/queue_db`;
 
@@ -134,6 +134,9 @@ async function runE2EQueue() {
           const data = await res.json();
           return { token: data.accessToken, user: data.user };
         }
+        if (res.status === 429) {
+          console.log(`   ℹ️  Rate limit (429) encountered for ${email} on /api/auth/login; using direct cryptographic token signing with JWT_ACCESS_SECRET.`);
+        }
       } catch {}
 
       // Fallback if rate-limited: sign token using JWT_ACCESS_SECRET and DB user record
@@ -143,7 +146,7 @@ async function runE2EQueue() {
       const jwtModule = (await import('jsonwebtoken')).default;
       const token = jwtModule.sign(
         { sub: u.id, role: u.role, name: u.name, email: u.email },
-        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        process.env.JWT_ACCESS_SECRET!,
         { expiresIn: '15m' }
       );
       return { token, user: u };
@@ -407,7 +410,7 @@ async function runE2EQueue() {
     const jwtMod = (await import('jsonwebtoken')).default;
     const blockCustToken = jwtMod.sign(
       { sub: blockCustId, role: 'customer', name: 'Blocked Candidate', email: blockCustEmail },
-      process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+      process.env.JWT_ACCESS_SECRET!,
       { expiresIn: '15m' }
     );
 

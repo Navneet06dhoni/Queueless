@@ -1,0 +1,72 @@
+name: E2E Nightly & On-Demand
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Full-Stack E2E & Outage Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Secure Environment
+        run: npm run gen:env
+
+      - name: Build & Start Containerized Stack
+        run: |
+          docker compose down -v || true
+          docker compose up -d --build
+
+      - name: Wait for Stack Readiness
+        run: |
+          echo "Waiting for Gateway on port 8080..."
+          for attempt in $(seq 1 60); do
+            if curl -s http://localhost:8080/healthz | grep -q "ok"; then
+              echo "✅ Gateway is healthy on attempt $attempt!"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Create Proof Directory
+        run: mkdir -p proof
+
+      - name: Run Gateway Smoke Tests
+        run: npm run test:gateway | tee proof/gateway-smoke-ci.txt
+
+      - name: Run E2E Queue Tests
+        run: npm run e2e:queue | tee proof/e2e-queue-ci.txt
+
+      - name: Run E2E Notification Tests
+        run: npm run e2e:notification | tee proof/e2e-notification-ci.txt
+
+      - name: Run Three-Way Outage & Resilience Demo
+        run: npm run demo:queue-outage | tee proof/demo-queue-outage-ci.txt
+
+      - name: Upload Verification Artifacts
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: e2e-proof-logs
+          path: proof/
+          retention-days: 14
+
+      - name: Teardown Stack
+        if: always()
+        run: docker compose down -v

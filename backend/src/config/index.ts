@@ -1,25 +1,42 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { z } from 'zod';
+import { createSecretValidator } from '@queueless/common';
 
-// Load environment variables from .env file
+// Load environment variables prioritizing root .env
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-const envSchema = z.object({
+const isInsideDocker = fs.existsSync('/.dockerenv') || process.env.INSIDE_DOCKER === 'true';
+if (!isInsideDocker) {
+  if (process.env.REDIS_HOST === 'redis') process.env.REDIS_HOST = 'localhost';
+  if (process.env.DB_HOST === 'postgres') process.env.DB_HOST = 'localhost';
+}
+const parsedPassFromDb = (process.env.DATABASE_URL?.match(/:([^@:]+)@/) || [])[1] || '';
+const pgPass = process.env.POSTGRES_PASSWORD || process.env.DB_PASSWORD || parsedPassFromDb;
+const pgUser = process.env.POSTGRES_USER || process.env.DB_USER || 'postgres';
+const pgHost = isInsideDocker ? (process.env.DB_HOST || 'postgres') : (process.env.DB_HOST === 'postgres' ? 'localhost' : (process.env.DB_HOST || 'localhost'));
+const pgPort = process.env.DB_PORT || 5432;
+const defaultDbUrl = process.env.DATABASE_URL || `postgresql://${pgUser}:${pgPass}@${pgHost}:${pgPort}/${process.env.POSTGRES_DB || process.env.DB_NAME || 'queueless'}`;
+const defaultTestDbUrl = process.env.TEST_DATABASE_URL || `postgresql://${pgUser}:${pgPass}@${pgHost}:${pgPort}/queueless_test`;
+
+export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(5000),
   API_PREFIX: z.string().default('/api'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
 
-  // PostgreSQL
+  // PostgreSQL & Database Secret Validation (min 32 chars, no CHANGE_ME, no empty)
+  POSTGRES_PASSWORD: createSecretValidator('POSTGRES_PASSWORD').default(() => pgPass),
   DB_HOST: z.string().default('localhost'),
   DB_PORT: z.coerce.number().default(5432),
   DB_USER: z.string().default('postgres'),
-  DB_PASSWORD: z.string().default('postgrespassword'),
+  DB_PASSWORD: z.string().default(pgPass),
   DB_NAME: z.string().default('queueless'),
   DB_POOL_MAX: z.coerce.number().default(20),
-  DATABASE_URL: z.string().optional(),
-  TEST_DATABASE_URL: z.string().default('postgresql://postgres:postgrespassword@localhost:5432/queueless_test'),
+  DATABASE_URL: z.string().default(defaultDbUrl),
+  TEST_DATABASE_URL: z.string().default(defaultTestDbUrl),
 
   // Booking & Appointments
   CANCELLATION_CUTOFF_MINUTES: z.coerce.number().default(60),
@@ -37,10 +54,10 @@ const envSchema = z.object({
   CHECKIN_GRACE_MINUTES: z.coerce.number().default(15),
   FRONTEND_ORIGIN: z.string().default('http://localhost:5173'),
 
-  // JWT Secrets (Strictly validated)
-  JWT_ACCESS_SECRET: z.string().min(16, 'JWT_ACCESS_SECRET must be at least 16 characters long'),
+  // JWT Secrets (Strictly validated: min 32 chars, no CHANGE_ME, no empty)
+  JWT_ACCESS_SECRET: createSecretValidator('JWT_ACCESS_SECRET'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters long'),
+  JWT_REFRESH_SECRET: createSecretValidator('JWT_REFRESH_SECRET'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
   // Docs & Observability
@@ -67,9 +84,9 @@ const envSchema = z.object({
   EVENT_TRANSPORT: z.enum(['inprocess', 'rabbitmq']).default('inprocess'),
   RABBITMQ_URL: z.string().default('amqp://guest:guest@localhost:5672'),
 
-  // Notification Architecture Mode & Internal Token
+  // Notification Architecture Mode & Internal Token (min 32 chars, no CHANGE_ME, no empty)
   NOTIFICATIONS_MODE: z.enum(['embedded', 'service']).default('service'),
-  INTERNAL_TOKEN: z.string().default('queueless-internal-gateway-secret-key-32ch'),
+  INTERNAL_TOKEN: createSecretValidator('INTERNAL_TOKEN'),
 
   // Queue Architecture Mode & Service URL
   QUEUE_MODE: z.enum(['embedded', 'service']).default('service'),

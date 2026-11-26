@@ -674,4 +674,30 @@ describe('Notification Service Suite', () => {
       expect(specPaths).toContain('/api/admin/notifications');
     });
   });
+
+  describe('Secret Configuration Validation (INTERNAL_TOKEN, NOTIFICATION_DB_PASSWORD)', () => {
+    const { configSchema } = require('../src/config');
+
+    const baseValid = {
+      NODE_ENV: 'test',
+      INTERNAL_TOKEN: 'a'.repeat(32),
+      NOTIFICATION_DB_PASSWORD: 'b'.repeat(32),
+    };
+
+    test('accepts valid secrets >= 32 characters', () => {
+      expect(configSchema.safeParse(baseValid).success).toBe(true);
+    });
+
+    test('rejects empty, short, or CHANGE_ME for INTERNAL_TOKEN', () => {
+      expect(configSchema.safeParse({ ...baseValid, INTERNAL_TOKEN: '' }).success).toBe(false);
+      expect(configSchema.safeParse({ ...baseValid, INTERNAL_TOKEN: 'short_token' }).success).toBe(false);
+      expect(configSchema.safeParse({ ...baseValid, INTERNAL_TOKEN: 'CHANGE_ME' }).success).toBe(false);
+    });
+
+    test('rejects empty, short, or CHANGE_ME for NOTIFICATION_DB_PASSWORD', () => {
+      expect(configSchema.safeParse({ ...baseValid, NOTIFICATION_DB_PASSWORD: '' }).success).toBe(false);
+      expect(configSchema.safeParse({ ...baseValid, NOTIFICATION_DB_PASSWORD: 'short_password' }).success).toBe(false);
+      expect(configSchema.safeParse({ ...baseValid, NOTIFICATION_DB_PASSWORD: 'CHANGE_ME' }).success).toBe(false);
+    });
+  });
 });

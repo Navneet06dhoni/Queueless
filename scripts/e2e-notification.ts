@@ -12,7 +12,7 @@ dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
 const GATEWAY_URL = 'http://localhost:8080';
 const BACKEND_URL = 'http://localhost:5000';
 const MAILHOG_URL = 'http://localhost:8025';
-const pgPass = process.env.POSTGRES_PASSWORD || 'postgrespassword';
+const pgPass = process.env.POSTGRES_PASSWORD || '';
 const DB_URL = `postgresql://postgres:${pgPass}@localhost:5432/queueless`;
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -117,6 +117,9 @@ async function runE2ENotifications() {
             id: data.data?.user?.id || data.user?.id,
           };
         }
+        if (res.status === 429) {
+          console.log(`   ℹ️  Rate limit (429) encountered for ${email} on /api/auth/login; using direct cryptographic token signing with JWT_ACCESS_SECRET.`);
+        }
       } catch {}
 
       const uRes = await pool.query('SELECT id, name, email, role FROM users WHERE email = $1', [email]);
@@ -125,7 +128,7 @@ async function runE2ENotifications() {
       const jwtModule = (await import('jsonwebtoken')).default;
       const token = jwtModule.sign(
         { sub: u.id, role: u.role, name: u.name, email: u.email },
-        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        process.env.JWT_ACCESS_SECRET!,
         { expiresIn: '15m' }
       );
       return { token, id: u.id };
@@ -344,7 +347,7 @@ async function runE2ENotifications() {
 
     const spoofRes = await fetch(`${GATEWAY_URL}/api/notifications`, {
       headers: {
-        'X-Internal-Token': 'queueless-internal-gateway-secret-key-32ch',
+        'X-Internal-Token': process.env.INTERNAL_TOKEN || 'test-spoofed-internal-token-value-32ch',
         'X-User-Id': cust1Id,
       },
     });

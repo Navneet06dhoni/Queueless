@@ -21,6 +21,8 @@ RUN npm --prefix frontend run build
 # Stage 2: Production Nginx Server
 FROM nginx:1.26-alpine AS runner
 
+RUN apk upgrade --no-cache
+
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 

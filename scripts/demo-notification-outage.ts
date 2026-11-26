@@ -9,8 +9,12 @@ const GATEWAY_URL = 'http://localhost:8080';
 const BACKEND_URL = 'http://localhost:5000';
 const MAILHOG_URL = 'http://localhost:8025';
 const RABBITMQ_API = 'http://localhost:15672/api/queues/%2F/notification.q';
-const DB_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/queueless';
-const NOTIF_DB_URL = 'postgresql://notification_user:notification_password@localhost:5432/notification_db';
+const pgPass = process.env.POSTGRES_PASSWORD || '';
+const DB_URL = process.env.DATABASE_URL || (pgPass ? `postgresql://postgres:${encodeURIComponent(pgPass)}@localhost:5432/queueless` : '');
+const NOTIF_DB_URL = process.env.NOTIFICATION_DATABASE_URL || (process.env.NOTIFICATION_DB_PASSWORD ? `postgresql://${process.env.NOTIFICATION_DB_USER || 'notification_user'}:${encodeURIComponent(process.env.NOTIFICATION_DB_PASSWORD)}@localhost:5432/${process.env.NOTIFICATION_DB_NAME || 'notification_db'}` : '');
+if (!DB_URL || !NOTIF_DB_URL) {
+  throw new Error('DATABASE_URL and NOTIFICATION_DATABASE_URL (or POSTGRES_PASSWORD and NOTIFICATION_DB_PASSWORD) are required');
+}
 
 const pool = new Pool({ connectionString: DB_URL });
 const notifPool = new Pool({ connectionString: NOTIF_DB_URL });

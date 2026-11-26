@@ -46,6 +46,9 @@ RUN npm ci --omit=dev --workspace=services/notification-service --include-worksp
 # Stage 3: Production Runner
 FROM node:22-alpine AS runner
 
+# Hardening: remove package managers from runtime to eliminate unnecessary dev tooling and CVEs
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn*
+
 WORKDIR /app
 
 ENV NODE_ENV=production

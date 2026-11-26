@@ -1,8 +1,12 @@
 import { Client } from 'pg';
 
 async function copyNotifications() {
-  const sourceUrl = process.env.SOURCE_DATABASE_URL || 'postgresql://postgres:postgrespassword@localhost:5432/queueless';
-  const destUrl = process.env.DEST_DATABASE_URL || 'postgresql://notification_user:notification_password@localhost:5432/notification_db';
+  const sourceUrl = process.env.SOURCE_DATABASE_URL || process.env.DATABASE_URL;
+  const destUrl = process.env.DEST_DATABASE_URL || process.env.NOTIFICATION_DATABASE_URL;
+
+  if (!sourceUrl || !destUrl) {
+    throw new Error('SOURCE_DATABASE_URL (or DATABASE_URL) and DEST_DATABASE_URL (or NOTIFICATION_DATABASE_URL) are required');
+  }
 
   console.log('📦 Starting one-off idempotent copy of notifications from monolith to notification_db...');
   console.log(`   Source: ${sourceUrl.split('@')[1]}`);

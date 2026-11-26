@@ -98,8 +98,19 @@ describe('QueuePort & HttpQueuePortAdapter (Fail-Soft & Resilience)', () => {
     const { QueuePortImpl } = require('../src/modules/queue/queue.ports');
     const { QueueRepository } = require('../../services/queue-service/src/repository');
 
+    const pgPassword = process.env.POSTGRES_PASSWORD || process.env.DB_PASSWORD;
+    const queueConnStr =
+      process.env.QUEUE_DATABASE_URL ||
+      (pgPassword
+        ? `postgresql://postgres:${encodeURIComponent(pgPassword)}@${process.env.POSTGRES_HOST || 'localhost'}:${process.env.POSTGRES_PORT || 5432}/queue_test`
+        : process.env.DATABASE_URL
+          ? process.env.DATABASE_URL.replace(/\/[^/]+$/, '/queue_test')
+          : '');
+    if (!queueConnStr) {
+      throw new Error('QUEUE_DATABASE_URL, DATABASE_URL, or POSTGRES_PASSWORD is required for integration test');
+    }
     const queueDbPool = new Pool({
-      connectionString: 'postgresql://postgres:postgrespassword@localhost:5432/queue_test',
+      connectionString: queueConnStr,
     });
 
     // Ensure a valid business exists in core DB

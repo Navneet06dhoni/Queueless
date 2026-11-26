@@ -62,8 +62,11 @@ async function main() {
   }
 
   const isQueueService = config.QUEUE_MODE === 'service';
-  const queueDbUrl = process.env.QUEUE_DATABASE_URL || 'postgresql://queue_user:queue_password@localhost:5432/queue_db';
-  const queuePool = isQueueService ? new pool.constructor({ connectionString: queueDbUrl }) : null;
+  const queueDbUrl = process.env.QUEUE_DATABASE_URL;
+  if (isQueueService && !queueDbUrl) {
+    throw new Error('QUEUE_DATABASE_URL is required when QUEUE_MODE=service');
+  }
+  const queuePool = isQueueService && queueDbUrl ? new pool.constructor({ connectionString: queueDbUrl }) : null;
 
   // 4. Idempotently clean up previously seeded analytics data
   console.log('🧹 Cleaning up previous analytics seed data...');

@@ -337,4 +337,44 @@ export const getQueuePort = (): QueuePort => {
   return new QueuePortImpl();
 };
 
-export const queuePort: QueuePort = getQueuePort();
+export class DynamicQueuePort implements QueuePort {
+  getQueueStats(): Promise<{ queueServed30Days: number }> {
+    return getQueuePort().getQueueStats();
+  }
+  getQueueAnalytics(
+    businessId: string,
+    from: string,
+    to: string
+  ): Promise<{
+    queue: {
+      totalServed: number;
+      skipped: number;
+      left: number;
+      walkInCount: number;
+      onlineCount: number;
+      appointmentCount: number;
+    };
+    averageWaitMinutes: number | null;
+    medianWaitMinutes: number | null;
+    averageServiceMinutes: number | null;
+    estimateAccuracy: {
+      sampleSize: number;
+      meanAbsoluteErrorMinutes: number | null;
+    };
+    peakHours: Array<{ hour: number; count: number }>;
+    daily: Array<{ date: string; served: number; averageWaitMinutes: number | null }>;
+  }> {
+    return getQueuePort().getQueueAnalytics(businessId, from, to);
+  }
+  getQueueToday(
+    businessId: string
+  ): Promise<{
+    waitingNow: number;
+    servedToday: number;
+    averageWaitMinutesToday: number | null;
+  }> {
+    return getQueuePort().getQueueToday(businessId);
+  }
+}
+
+export const queuePort: QueuePort = new DynamicQueuePort();

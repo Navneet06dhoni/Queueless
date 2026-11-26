@@ -4,10 +4,15 @@ import crypto from 'crypto';
 
 function generateEnv() {
   const envPath = path.resolve(__dirname, '../.env');
+  const force = process.argv.includes('--force') || process.argv.includes('-f');
 
-  if (fs.existsSync(envPath)) {
-    console.log('ℹ️  .env file already exists. Skipping generation to prevent overwriting existing configuration.');
+  if (fs.existsSync(envPath) && !force) {
+    console.log('ℹ️  .env file already exists. Skipping generation to prevent overwriting existing configuration (use --force to overwrite).');
     return;
+  }
+
+  if (fs.existsSync(envPath) && force) {
+    console.log('⚠️  WARNING: --force specified! Overwriting existing .env file with new cryptographically generated secrets.');
   }
 
   const generateSecret = (bytes = 32): string => {

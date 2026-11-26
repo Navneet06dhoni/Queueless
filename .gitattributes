@@ -1,0 +1,11 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Explicit LF line endings for container & script files
+Dockerfile eol=lf
+*.dockerfile eol=lf
+*.sh eol=lf
+*.conf eol=lf
+*.template eol=lf
+*.yml eol=lf
+*.yaml eol=lf

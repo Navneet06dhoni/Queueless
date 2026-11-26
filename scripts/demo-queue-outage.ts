@@ -13,9 +13,9 @@ const BACKEND_URL = 'http://localhost:5000';
 const QUEUE_SERVICE_DIRECT_URL = 'http://127.0.0.1:3003';
 const MAILHOG_URL = 'http://localhost:8025';
 const RABBITMQ_API = 'http://localhost:15672/api/queues/%2F/notification.q';
-const pgPass = process.env.POSTGRES_PASSWORD || 'postgrespassword';
+const pgPass = process.env.POSTGRES_PASSWORD || '';
 const DB_URL = `postgresql://postgres:${pgPass}@localhost:5432/queueless`;
-const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || 'queueless-internal-gateway-secret-key-32ch';
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || '';
 
 const pool = new Pool({ connectionString: DB_URL });
 
@@ -148,10 +148,15 @@ async function runDemo() {
   }
 
   try {
-    // Clean slate: Clear MailHog
-    console.log('🧹 Clearing MailHog...');
+    // Clean slate: Clear MailHog and RabbitMQ notification.q
+    console.log('🧹 Clearing MailHog and notification.q...');
     await fetch(`${MAILHOG_URL}/api/v1/messages`, { method: 'DELETE' }).catch(() => {});
-    console.log('   ✅ MailHog cleared\n');
+    const rmqAuth = 'Basic ' + Buffer.from('guest:guest').toString('base64');
+    await fetch('http://127.0.0.1:15672/api/queues/%2F/notification.q/contents', {
+      method: 'DELETE',
+      headers: { Authorization: rmqAuth },
+    }).catch(() => {});
+    console.log('   ✅ MailHog and notification.q cleared\n');
 
     // Setup fresh test entities: 1 Owner, 1 Business, 2 Customers
     const ts = Date.now();
@@ -223,6 +228,9 @@ async function runDemo() {
           const data = await res.json();
           return data.accessToken as string;
         }
+        if (res.status === 429) {
+          console.log(`   ℹ️  Rate limit (429) encountered for ${email} on /api/auth/login; using direct cryptographic token signing with JWT_ACCESS_SECRET.`);
+        }
       } catch {}
 
       const uRes = await pool.query('SELECT id, name, email, role FROM users WHERE email = $1', [email]);
@@ -231,7 +239,7 @@ async function runDemo() {
       const jwtModule = (await import('jsonwebtoken')).default;
       return jwtModule.sign(
         { sub: u.id, role: u.role, name: u.name, email: u.email },
-        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        process.env.JWT_ACCESS_SECRET!,
         { expiresIn: '15m' }
       ) as string;
     };
@@ -345,7 +353,7 @@ async function runDemo() {
       await sleep(1000);
       cust1Emails = await getMailHogCount(cust1Email);
       cust2Emails = await getMailHogCount(cust2Email);
-      if (cust1Emails === 1 && cust2Emails === 1) break;
+      if (cust1Emails === 1 && cust2Emails === 2) break;
     }
     const totalEmails = cust1Emails + cust2Emails;
     report(

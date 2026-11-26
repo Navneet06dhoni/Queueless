@@ -12,8 +12,8 @@ dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
 
 const GATEWAY_URL = 'http://localhost:8080';
 const BACKEND_URL = 'http://localhost:5000';
-const pgPass = process.env.POSTGRES_PASSWORD || 'postgrespassword';
-const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || 'queueless-internal-gateway-secret-key-32ch';
+const pgPass = process.env.POSTGRES_PASSWORD || '';
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || '';
 const DB_URL = `postgresql://postgres:${pgPass}@localhost:5432/queueless`;
 
 const pool = new Pool({ connectionString: DB_URL });
@@ -154,7 +154,7 @@ async function runSmokeTests() {
       const jwtMod = (await import('jsonwebtoken')).default;
       custToken = jwtMod.sign(
         { sub: custId, role: 'customer', name: 'Smoke Customer', email: custEmail },
-        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        process.env.JWT_ACCESS_SECRET!,
         { expiresIn: '15m' }
       );
     }
@@ -339,7 +339,7 @@ async function runSmokeTests() {
       const jwtMod = (await import('jsonwebtoken')).default;
       adminToken = jwtMod.sign(
         { sub: a.id, role: a.role, name: a.name, email: a.email },
-        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        process.env.JWT_ACCESS_SECRET!,
         { expiresIn: '15m' }
       );
     }
@@ -514,31 +514,54 @@ async function runSmokeTests() {
     // Check 10: 502 UPSTREAM_UNAVAILABLE
     // -------------------------------------------------------------
     console.log('\n🔟 Checking 502 UPSTREAM_UNAVAILABLE JSON error page behavior...');
+    let stoppedCoreInDocker = false;
     if (weStartedBackend && backendProc?.pid) {
       console.log('   Stopping spawned backend process to trigger 502...');
       killProcessTree(backendProc.pid);
       backendProc = null;
-      await sleep(500);
-
-      const start502 = Date.now();
-      const badGatewayRes = await fetch(`${GATEWAY_URL}/api/health`);
-      const duration502 = Date.now() - start502;
-      const badGatewayBody = await badGatewayRes.json();
-
-      const c10Pass =
-        badGatewayRes.status === 502 &&
-        badGatewayBody.error?.code === 'UPSTREAM_UNAVAILABLE' &&
-        typeof badGatewayBody.error?.message === 'string' &&
-        !!badGatewayBody.error?.requestId &&
-        duration502 < 2000;
-      reportCheck(
-        '502 returned in <2s with code UPSTREAM_UNAVAILABLE and JSON error envelope',
-        c10Pass,
-        JSON.stringify(badGatewayBody.error)
-      );
     } else {
-      console.log('   ℹ️  Backend was not started by this runner; leaving external process intact.');
-      reportCheck('External backend process was preserved intact (not killed)', true);
+      console.log('   Stopping containerized core via docker compose stop core to trigger 502...');
+      execSync('docker compose stop core', { stdio: 'pipe' });
+      stoppedCoreInDocker = true;
+    }
+
+    await sleep(500);
+
+    const start502 = Date.now();
+    const badGatewayRes = await fetch(`${GATEWAY_URL}/api/health`);
+    const duration502 = Date.now() - start502;
+    const badGatewayBody = await badGatewayRes.json();
+    const badGatewayReqId = badGatewayRes.headers.get('x-request-id');
+
+    const c10Pass =
+      badGatewayRes.status === 502 &&
+      badGatewayBody.error?.code === 'UPSTREAM_UNAVAILABLE' &&
+      typeof badGatewayBody.error?.message === 'string' &&
+      !!badGatewayBody.error?.requestId &&
+      badGatewayReqId === badGatewayBody.error?.requestId &&
+      duration502 < 2000;
+    reportCheck(
+      '502 returned in <2s with code UPSTREAM_UNAVAILABLE and matching requestId header/body',
+      c10Pass,
+      `Status: ${badGatewayRes.status}, Error Code: ${badGatewayBody.error?.code}, RequestId: ${badGatewayReqId}, Duration: ${duration502}ms`
+    );
+
+    if (stoppedCoreInDocker) {
+      console.log('   Restarting containerized core via docker compose start core...');
+      execSync('docker compose start core', { stdio: 'pipe' });
+      console.log('   Waiting for core to become healthy...');
+      let coreHealthy = false;
+      for (let i = 0; i < 30; i++) {
+        await sleep(1000);
+        try {
+          const chk = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
+          if (chk.ok) {
+            coreHealthy = true;
+            break;
+          }
+        } catch {}
+      }
+      reportCheck('Containerized core restarted and verified healthy', coreHealthy);
     }
 
     console.log('\n------------------------------------------------------------');

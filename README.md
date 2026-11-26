@@ -53,20 +53,27 @@ npm --prefix frontend install
 ```
 
 ### Step 2: Configure Environment Variables
-Copy the example environment file:
+Generate secure random credentials for local deployment:
 ```bash
-cp backend/.env.example backend/.env
+npm run gen:env
 ```
-*(The defaults in `.env.example` work out of the box for local Docker development).*
+*(Creates `.env` from `.env.example` with cryptographically secure random secrets without overwriting existing files).*
 
-### Step 3: Start Infrastructure Services
-Start PostgreSQL, Redis, and MailHog containers in background:
+### Step 3: Start the Entire Platform with One Command
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
-Verify containers are running:
-- PostgreSQL on `localhost:5432` (`queueless` / `postgrespassword`)
-- Redis on `localhost:6379`
+This automatically runs database creations, all service migrations, builds the multi-stage images, and starts the gateway (`:8080`), core monolith, queue service, notification service, frontend, PostgreSQL, Redis, RabbitMQ, and MailHog.
+
+> [!TIP]
+> **Disk Space Management:** After building Docker images, you can reclaim disk space by pruning the BuildKit cache:
+> ```bash
+> docker builder prune -f
+> ```
+
+Verify services are running:
+- Gateway & Web App on [http://localhost:8080](http://localhost:8080)
+- RabbitMQ Management on [http://localhost:15672](http://localhost:15672) (`guest` / `guest`)
 - MailHog Web UI on [http://localhost:8025](http://localhost:8025)
 
 ### Step 4: Run Migrations & Seed Data

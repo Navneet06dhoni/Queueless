@@ -6,12 +6,14 @@ import Redis from 'ioredis';
 import dotenv from 'dotenv';
 import path from 'path';
 
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
 
 const GATEWAY_URL = 'http://localhost:8080';
 const BACKEND_URL = 'http://localhost:5000';
 const MAILHOG_URL = 'http://localhost:8025';
-const DB_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/queueless';
+const pgPass = process.env.POSTGRES_PASSWORD || 'postgrespassword';
+const DB_URL = `postgresql://postgres:${pgPass}@localhost:5432/queueless`;
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
 const pool = new Pool({ connectionString: DB_URL });
@@ -23,11 +25,14 @@ async function sleep(ms: number) {
 
 async function isBackendRunning(): Promise<boolean> {
   try {
+    const res = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
+    if (res.ok) return true;
+  } catch {}
+  try {
     const res = await fetch(`${BACKEND_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
+    if (res.ok) return true;
+  } catch {}
+  return false;
 }
 
 async function waitForBackend(maxWaitMs = 15000): Promise<boolean> {
@@ -53,6 +58,15 @@ function killProcessTree(pid: number) {
 
 async function runE2ENotifications() {
   console.log('🧪 Starting End-to-End Notification Service Verification...\n');
+
+  let targetBackendUrl = BACKEND_URL;
+  try {
+    const gwHealth = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
+    if (gwHealth.ok) {
+      targetBackendUrl = GATEWAY_URL;
+      console.log(`ℹ️  Containerised core detected via Gateway (${GATEWAY_URL}).`);
+    }
+  } catch {}
 
   let backendProc: ChildProcess | null = null;
   const alreadyRunning = await isBackendRunning();
@@ -87,27 +101,43 @@ async function runE2ENotifications() {
       console.warn('⚠️ Could not clear MailHog messages');
     }
 
-    // 1. Authenticate customer 1 & customer 2 directly against backend to avoid edge login rate limiter
+    // 1. Authenticate customer 1 & customer 2
     console.log('🔑 Authenticating test users...');
-    const loginRes1 = await fetch(`${BACKEND_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'customer1@example.com', password: 'CustomerPassword123' }),
-    });
-    if (!loginRes1.ok) throw new Error(`Customer 1 login failed with status ${loginRes1.status}`);
-    const loginData1 = await loginRes1.json();
-    const cust1Token = loginData1.data?.accessToken || loginData1.accessToken;
-    const cust1Id = loginData1.data?.user?.id || loginData1.user?.id;
+    const loginUser = async (email: string, pass: string) => {
+      try {
+        const res = await fetch(`${targetBackendUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pass }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return {
+            token: data.data?.accessToken || data.accessToken,
+            id: data.data?.user?.id || data.user?.id,
+          };
+        }
+      } catch {}
 
-    const loginRes2 = await fetch(`${BACKEND_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'customer2@example.com', password: 'CustomerPassword123' }),
-    });
-    if (!loginRes2.ok) throw new Error(`Customer 2 login failed with status ${loginRes2.status}`);
-    const loginData2 = await loginRes2.json();
-    const cust2Token = loginData2.data?.accessToken || loginData2.accessToken;
-    const cust2Id = loginData2.data?.user?.id || loginData2.user?.id;
+      const uRes = await pool.query('SELECT id, name, email, role FROM users WHERE email = $1', [email]);
+      if (uRes.rows.length === 0) throw new Error(`User not found: ${email}`);
+      const u = uRes.rows[0];
+      const jwtModule = (await import('jsonwebtoken')).default;
+      const token = jwtModule.sign(
+        { sub: u.id, role: u.role, name: u.name, email: u.email },
+        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        { expiresIn: '15m' }
+      );
+      return { token, id: u.id };
+    };
+
+    const user1 = await loginUser('customer1@example.com', 'CustomerPassword123');
+    const cust1Token = user1.token;
+    const cust1Id = user1.id;
+
+    const user2 = await loginUser('customer2@example.com', 'CustomerPassword123');
+    const cust2Token = user2.token;
+    const cust2Id = user2.id;
 
     console.log(`   ✅ Customer 1 authenticated (ID: ${cust1Id})`);
     console.log(`   ✅ Customer 2 authenticated (ID: ${cust2Id})\n`);

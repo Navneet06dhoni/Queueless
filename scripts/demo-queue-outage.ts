@@ -5,6 +5,7 @@ import path from 'path';
 import { io as ioClient, Socket } from 'socket.io-client';
 import bcrypt from 'bcryptjs';
 
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
 
 const GATEWAY_URL = 'http://localhost:8080';
@@ -12,8 +13,9 @@ const BACKEND_URL = 'http://localhost:5000';
 const QUEUE_SERVICE_DIRECT_URL = 'http://127.0.0.1:3003';
 const MAILHOG_URL = 'http://localhost:8025';
 const RABBITMQ_API = 'http://localhost:15672/api/queues/%2F/notification.q';
-const DB_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgrespassword@localhost:5432/queueless';
-const INTERNAL_TOKEN = 'queueless-internal-gateway-secret-key-32ch';
+const pgPass = process.env.POSTGRES_PASSWORD || 'postgrespassword';
+const DB_URL = `postgresql://postgres:${pgPass}@localhost:5432/queueless`;
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || 'queueless-internal-gateway-secret-key-32ch';
 
 const pool = new Pool({ connectionString: DB_URL });
 
@@ -23,11 +25,14 @@ async function sleep(ms: number) {
 
 async function isBackendRunning(): Promise<boolean> {
   try {
+    const res = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
+    if (res.ok) return true;
+  } catch {}
+  try {
     const res = await fetch(`${BACKEND_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
+    if (res.ok) return true;
+  } catch {}
+  return false;
 }
 
 async function waitForBackend(maxWaitMs = 15000): Promise<boolean> {
@@ -122,6 +127,12 @@ async function runDemo() {
     }
   }
 
+  let isContainerizedCore = false;
+  try {
+    const gw = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
+    if (gw.ok) isContainerizedCore = true;
+  } catch {}
+
   let backendProc: ChildProcess | null = null;
   const backendAlreadyRunning = await isBackendRunning();
   if (!backendAlreadyRunning) {
@@ -133,7 +144,7 @@ async function runDemo() {
     }
     console.log('   ✅ Backend started on port 5000\n');
   } else {
-    console.log('ℹ️  Monolith backend is already running on port 5000.\n');
+    console.log(`ℹ️  Monolith backend is already running (${isContainerizedCore ? 'in Container via Gateway' : 'on port 5000'}).\n`);
   }
 
   try {
@@ -200,14 +211,29 @@ async function runDemo() {
     const cust2Id = cust2Res.rows[0].id;
 
     // Login users to get access tokens
+    const loginTargetUrl = isContainerizedCore ? GATEWAY_URL : BACKEND_URL;
     const login = async (email: string) => {
-      const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: defaultPass }),
-      });
-      const data = await res.json();
-      return data.accessToken as string;
+      try {
+        const res = await fetch(`${loginTargetUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: defaultPass }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return data.accessToken as string;
+        }
+      } catch {}
+
+      const uRes = await pool.query('SELECT id, name, email, role FROM users WHERE email = $1', [email]);
+      if (uRes.rows.length === 0) throw new Error(`User not found: ${email}`);
+      const u = uRes.rows[0];
+      const jwtModule = (await import('jsonwebtoken')).default;
+      return jwtModule.sign(
+        { sub: u.id, role: u.role, name: u.name, email: u.email },
+        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        { expiresIn: '15m' }
+      ) as string;
     };
 
     const ownerToken = await login(ownerEmail);
@@ -430,10 +456,17 @@ async function runDemo() {
     console.log('\n🔄 Restarting queue-service container...');
     execSync('docker compose start queue-service', { stdio: 'inherit' });
 
-    // Wait for queue service healthy
+    // Wait for queue service healthy (via Gateway queue route or direct URL if published)
     let qHealthy = false;
     for (let i = 0; i < 20; i++) {
       await sleep(1000);
+      try {
+        const hRes = await fetch(`${GATEWAY_URL}/api/queue/${bizId}/status`);
+        if (hRes.ok) {
+          qHealthy = true;
+          break;
+        }
+      } catch {}
       try {
         const hRes = await fetch(`${QUEUE_SERVICE_DIRECT_URL}/health`);
         if (hRes.ok) {
@@ -501,9 +534,13 @@ async function runDemo() {
     });
 
     // Stop monolith backend process
-    console.log('\n2. Stopping monolith backend process (port 5000)...');
-    stopBackendProcess(backendProc);
-    backendProc = null;
+    console.log('\n2. Stopping monolith backend process...');
+    if (isContainerizedCore) {
+      execSync('docker compose stop core', { stdio: 'pipe' });
+    } else {
+      stopBackendProcess(backendProc);
+      backendProc = null;
+    }
     await sleep(2000);
 
     const coreIsDown = !(await isBackendRunning());
@@ -520,18 +557,29 @@ async function runDemo() {
     );
 
     // Socket connected before outage keeps receiving updates when owner action sent to 127.0.0.1:3003
-    console.log('\n4. Sending owner call-next directly to 127.0.0.1:3003 with internal token:');
-    const directActionRes = await fetch(`${QUEUE_SERVICE_DIRECT_URL}/api/queue/${bizId}/next`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Internal-Token': INTERNAL_TOKEN,
-        'X-User-Id': ownerId,
-        'X-User-Role': 'owner',
-        'X-User-Name': 'Demo Owner',
-        'X-User-Email': ownerEmail,
-      },
-    });
+    console.log('\n4. Sending owner call-next directly to queue-service with internal token:');
+    let directActionRes: { status: number; json: () => Promise<any> };
+    if (isContainerizedCore) {
+      const raw = execSync(
+        `docker compose exec -T queue-service node -e "fetch('http://127.0.0.1:3003/api/queue/${bizId}/next', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Internal-Token': '${INTERNAL_TOKEN}', 'X-User-Id': '${ownerId}', 'X-User-Role': 'owner', 'X-User-Name': 'Demo Owner', 'X-User-Email': '${ownerEmail}' } }).then(async r => console.log(JSON.stringify({ status: r.status, data: await r.json() })))"`,
+        { encoding: 'utf8' }
+      );
+      const parsed = JSON.parse(raw.trim());
+      directActionRes = { status: parsed.status, json: async () => parsed.data };
+    } else {
+      const fetchRes = await fetch(`${QUEUE_SERVICE_DIRECT_URL}/api/queue/${bizId}/next`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Token': INTERNAL_TOKEN,
+          'X-User-Id': ownerId,
+          'X-User-Role': 'owner',
+          'X-User-Name': 'Demo Owner',
+          'X-User-Email': ownerEmail,
+        },
+      });
+      directActionRes = { status: fetchRes.status, json: () => fetchRes.json() };
+    }
     const directActionData = await directActionRes.json();
     const directCalledTicket = directActionData.current?.ticketNumber ?? directActionData.ticketNumber;
     report(
@@ -573,9 +621,13 @@ async function runDemo() {
 
     // Restart core so environment is restored
     console.log('\n🔄 Restarting monolith backend process...');
-    backendProc = startBackendProcess();
+    if (isContainerizedCore) {
+      execSync('docker compose start core', { stdio: 'pipe' });
+    } else {
+      backendProc = startBackendProcess();
+    }
     const coreRestored = await waitForBackend(30000);
-    report('Monolith backend restored and healthy on port 5000', coreRestored);
+    report('Monolith backend restored and healthy', coreRestored);
 
     console.log('\n-------------------------------------------------------------');
     if (overallSuccess) {

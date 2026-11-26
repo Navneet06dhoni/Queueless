@@ -1,20 +1,30 @@
 import { Client } from 'pg';
 
 async function createServiceDbs() {
-  const adminUrl = process.env.ADMIN_DATABASE_URL || 'postgresql://postgres:postgrespassword@localhost:5432/postgres';
+  const adminUrl =
+    process.env.ADMIN_DATABASE_URL ||
+    (process.env.DATABASE_URL ? process.env.DATABASE_URL.replace(/\/[^/]+$/, '/postgres') : null) ||
+    (process.env.DB_HOST
+      ? `postgresql://${process.env.DB_USER || 'postgres'}:${process.env.DB_PASSWORD || 'postgrespassword'}@${process.env.DB_HOST}:${process.env.DB_PORT || 5432}/postgres`
+      : 'postgresql://postgres:postgrespassword@localhost:5432/postgres');
+
+  const notifPassword = process.env.NOTIFICATION_DB_PASSWORD || 'notification_password';
+  const queuePassword = process.env.QUEUE_DB_PASSWORD || 'queue_password';
+
   console.log('🔄 Connecting to PostgreSQL as admin to initialize service databases...');
 
   const client = new Client({ connectionString: adminUrl });
   await client.connect();
 
   try {
-    // 1. Role
+    // 1. Role notification_user
     const userRes = await client.query(`SELECT 1 FROM pg_roles WHERE rolname = 'notification_user'`);
     if (userRes.rows.length === 0) {
       console.log('👤 Creating role notification_user...');
-      await client.query(`CREATE ROLE notification_user WITH LOGIN PASSWORD 'notification_password'`);
+      await client.query(`CREATE ROLE notification_user WITH LOGIN PASSWORD '${notifPassword}'`);
     } else {
-      console.log('✅ Role notification_user already exists');
+      console.log('✅ Role notification_user already exists, updating password...');
+      await client.query(`ALTER ROLE notification_user WITH PASSWORD '${notifPassword}'`);
     }
 
     // 2. Database notification_db
@@ -39,9 +49,10 @@ async function createServiceDbs() {
     const queueUserRes = await client.query(`SELECT 1 FROM pg_roles WHERE rolname = 'queue_user'`);
     if (queueUserRes.rows.length === 0) {
       console.log('👤 Creating role queue_user...');
-      await client.query(`CREATE ROLE queue_user WITH LOGIN PASSWORD 'queue_password'`);
+      await client.query(`CREATE ROLE queue_user WITH LOGIN PASSWORD '${queuePassword}'`);
     } else {
-      console.log('✅ Role queue_user already exists');
+      console.log('✅ Role queue_user already exists, updating password...');
+      await client.query(`ALTER ROLE queue_user WITH PASSWORD '${queuePassword}'`);
     }
 
     // 5. Database queue_db

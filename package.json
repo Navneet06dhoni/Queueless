@@ -19,6 +19,7 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "build:backend": "npm --prefix backend run build",
     "build:frontend": "npm --prefix frontend run build",
+    "gen:env": "tsx scripts/generate-env.ts",
     "migrate": "npm --prefix backend run migrate",
     "migrate:down": "npm --prefix backend run migrate:down",
     "seed": "npm --prefix backend run seed",

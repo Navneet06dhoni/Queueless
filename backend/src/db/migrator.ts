@@ -2,7 +2,19 @@ import fs from 'fs';
 import path from 'path';
 import { pool, withTransaction } from './index';
 
-const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+const resolveMigrationsDir = (): string => {
+  const localDir = path.join(__dirname, 'migrations');
+  if (fs.existsSync(localDir)) return localDir;
+  const srcDir = path.join(__dirname, '../../src/db/migrations');
+  if (fs.existsSync(srcDir)) return srcDir;
+  const cwdSrcDir = path.join(process.cwd(), 'src/db/migrations');
+  if (fs.existsSync(cwdSrcDir)) return cwdSrcDir;
+  const cwdBackendSrcDir = path.join(process.cwd(), 'backend/src/db/migrations');
+  if (fs.existsSync(cwdBackendSrcDir)) return cwdBackendSrcDir;
+  return localDir;
+};
+
+const MIGRATIONS_DIR = resolveMigrationsDir();
 
 export const ensureMigrationsTable = async (): Promise<void> => {
   await pool.query(`

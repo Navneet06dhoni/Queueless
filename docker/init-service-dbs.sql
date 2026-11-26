@@ -27,5 +27,8 @@ GRANT ALL PRIVILEGES ON DATABASE notification_test TO notification_user;
 GRANT ALL PRIVILEGES ON DATABASE queue_db TO queue_user;
 GRANT ALL PRIVILEGES ON DATABASE queue_test TO queue_user;
 
+SELECT 'CREATE DATABASE queueless_test'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'queueless_test')\gexec
+
 REVOKE ALL PRIVILEGES ON DATABASE queueless FROM notification_user, queue_user;
 REVOKE ALL PRIVILEGES ON DATABASE queueless_test FROM notification_user, queue_user;

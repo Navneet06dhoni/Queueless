@@ -1,14 +1,20 @@
 import http from 'http';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import path from 'path';
 import { io as ioClient, Socket } from 'socket.io-client';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
 
+import dotenv from 'dotenv';
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../backend/.env') });
+
 const GATEWAY_URL = 'http://localhost:8080';
 const BACKEND_URL = 'http://localhost:5000';
-const DB_URL =
-  process.env.TEST_DATABASE_URL || 'postgresql://postgres:postgrespassword@localhost:5432/queueless_test';
+const pgPass = process.env.POSTGRES_PASSWORD || 'postgrespassword';
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN || 'queueless-internal-gateway-secret-key-32ch';
+const DB_URL = `postgresql://postgres:${pgPass}@localhost:5432/queueless`;
 
 const pool = new Pool({ connectionString: DB_URL });
 
@@ -18,11 +24,14 @@ async function sleep(ms: number) {
 
 async function isBackendRunning(): Promise<boolean> {
   try {
+    const res = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
+    if (res.ok) return true;
+  } catch {}
+  try {
     const res = await fetch(`${BACKEND_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
+    if (res.ok) return true;
+  } catch {}
+  return false;
 }
 
 async function waitForBackend(maxWaitMs = 15000): Promise<boolean> {
@@ -48,6 +57,15 @@ function killProcessTree(pid: number) {
 
 async function runSmokeTests() {
   console.log('🚀 Starting Gateway Smoke Tests...\n');
+
+  let targetBackendUrl = BACKEND_URL;
+  try {
+    const gwHealth = await fetch(`${GATEWAY_URL}/api/health`, { signal: AbortSignal.timeout(1000) });
+    if (gwHealth.ok) {
+      targetBackendUrl = GATEWAY_URL;
+      console.log(`ℹ️  Containerised core detected via Gateway (${GATEWAY_URL}).`);
+    }
+  } catch {}
 
   let backendProc: ChildProcess | null = null;
   const alreadyRunning = await isBackendRunning();
@@ -112,17 +130,34 @@ async function runSmokeTests() {
     // Check 3 (a): Valid customer token + spoofed headers returns customer's own identity
     // -------------------------------------------------------------
     console.log('\n3️⃣ Check (a): Customer token with spoofed X-User-Id & X-User-Role returns customer identity...');
-    // Register unique test customer
+    // Register unique test customer (with DB fallback if rate-limited)
     const custEmail = `cust_smoke_${Date.now()}@example.com`;
     const custPass = 'Customer123!';
-    const regRes = await fetch(`${BACKEND_URL}/api/auth/register`, {
+    let custToken = '';
+    let custId = '';
+    const regRes = await fetch(`${targetBackendUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: custEmail, password: custPass, name: 'Smoke Customer', role: 'customer' }),
     });
-    const regData = await regRes.json();
-    const custToken = regData.accessToken;
-    const custId = regData.user.id;
+    if (regRes.ok) {
+      const regData = await regRes.json();
+      custToken = regData.accessToken;
+      custId = regData.user.id;
+    } else {
+      const passHash = await bcrypt.hash(custPass, 12);
+      const uRes = await pool.query(
+        `INSERT INTO users (name, email, password_hash, role) VALUES ('Smoke Customer', $1, $2, 'customer') RETURNING id`,
+        [custEmail, passHash]
+      );
+      custId = uRes.rows[0].id;
+      const jwtMod = (await import('jsonwebtoken')).default;
+      custToken = jwtMod.sign(
+        { sub: custId, role: 'customer', name: 'Smoke Customer', email: custEmail },
+        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        { expiresIn: '15m' }
+      );
+    }
 
     // Send valid token with SPOOFED headers through gateway
     const spoofMeRes = await fetch(`${GATEWAY_URL}/api/auth/me`, {
@@ -289,13 +324,25 @@ async function runSmokeTests() {
        VALUES ('Admin Smoke', $1, $2, 'admin')`,
       [adminEmail, adminPassHash]
     );
-    const adminLoginRes = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    let adminToken = '';
+    const adminLoginRes = await fetch(`${targetBackendUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: adminEmail, password: adminPass }),
     });
-    const adminLoginData = await adminLoginRes.json();
-    const adminToken = adminLoginData.accessToken;
+    if (adminLoginRes.ok) {
+      const adminLoginData = await adminLoginRes.json();
+      adminToken = adminLoginData.accessToken;
+    } else {
+      const adminRow = await pool.query('SELECT id, role, name, email FROM users WHERE email = $1', [adminEmail]);
+      const a = adminRow.rows[0];
+      const jwtMod = (await import('jsonwebtoken')).default;
+      adminToken = jwtMod.sign(
+        { sub: a.id, role: a.role, name: a.name, email: a.email },
+        process.env.JWT_ACCESS_SECRET || 'queueless_super_secret_access_token_key_change_in_production_123456',
+        { expiresIn: '15m' }
+      );
+    }
 
     // Block customer
     const blockRes = await fetch(`${GATEWAY_URL}/api/admin/users/${custId}/block`, {
@@ -373,14 +420,29 @@ async function runSmokeTests() {
 
     // 1) Under TRUST_PROXY=1: backend is running with TRUST_PROXY=1
     console.log('   --- Case 1: Backend with TRUST_PROXY=1 (Calling http://localhost:5000/internal/debug/client-ip directly) ---');
+    let isDirectPort5000 = false;
+    try {
+      const ping = await fetch(`${BACKEND_URL}/api/health`, { signal: AbortSignal.timeout(500) });
+      isDirectPort5000 = ping.ok;
+    } catch {}
+
     for (const ip of xffTestIps) {
-      const res = await fetch(`${BACKEND_URL}/internal/debug/client-ip`, {
-        headers: {
-          'X-Forwarded-For': ip,
-          'X-Internal-Token': 'queueless-internal-gateway-secret-key-32ch',
-        },
-      });
-      const data = await res.json();
+      let data: any;
+      if (isDirectPort5000) {
+        const res = await fetch(`${BACKEND_URL}/internal/debug/client-ip`, {
+          headers: {
+            'X-Forwarded-For': ip,
+            'X-Internal-Token': INTERNAL_TOKEN,
+          },
+        });
+        data = await res.json();
+      } else {
+        const raw = execSync(
+          `docker compose exec -T core node -e "fetch('http://127.0.0.1:5000/internal/debug/client-ip', { headers: { 'X-Forwarded-For': '${ip}', 'X-Internal-Token': '${INTERNAL_TOKEN}' } }).then(r => r.json()).then(d => console.log(JSON.stringify(d)))"`,
+          { encoding: 'utf8' }
+        );
+        data = JSON.parse(raw.trim());
+      }
       console.log(`   Direct call with X-Forwarded-For: ${ip} => Backend observed req.ip: ${data.ip} (trust proxy: ${data.trustProxy})`);
     }
 

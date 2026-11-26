@@ -1,5 +1,4 @@
 import express, { Express, Request, Response } from 'express';
-import cors from 'cors';
 import helmet from 'helmet';
 import { requestIdMiddleware, requestLogger, errorHandler, createHealthRouter } from '@queueless/common';
 import { query } from './db';
@@ -13,7 +12,6 @@ export const createQueueApp = (): Express => {
   const app = express();
 
   app.use(helmet());
-  app.use(cors());
   app.use(requestIdMiddleware);
   app.use(requestLogger);
   app.use(express.json({ limit: '100kb' }));

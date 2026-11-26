@@ -1,31 +1,52 @@
 version: '3.8'
 
+networks:
+  public:
+    name: queueless_public
+  backend:
+    name: queueless_backend
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: queueless_postgres
     restart: unless-stopped
+    networks:
+      - backend
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: queueless
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-queueless}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-service-dbs.sql:/docker-entrypoint-initdb.d/init-service-dbs.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d queueless"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-queueless}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
 
   redis:
     image: redis:7-alpine
     container_name: queueless_redis
     restart: unless-stopped
+    networks:
+      - backend
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -33,35 +54,177 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   mailhog:
     image: mailhog/mailhog:latest
     container_name: queueless_mailhog
     restart: unless-stopped
+    networks:
+      - backend
     ports:
-      - "1025:1025" # SMTP
-      - "8025:8025" # Web UI
+      - "127.0.0.1:1025:1025" # SMTP (local host debugging)
+      - "127.0.0.1:8025:8025" # Web UI (local host debugging)
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8025/api/v2/messages > /dev/null || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   rabbitmq:
     image: rabbitmq:3-management
     container_name: queueless_rabbitmq
     restart: unless-stopped
+    networks:
+      - backend
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"   # AMQP (local host debugging)
+      - "127.0.0.1:15672:15672" # Management UI (local host debugging)
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  migrate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.migrate
+    container_name: queueless_migrate
+    restart: "no"
+    networks:
+      - backend
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-queueless}
+      ADMIN_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/postgres
+      NOTIFICATION_DATABASE_URL: postgresql://${NOTIFICATION_DB_USER:-notification_user}:${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD is required}@postgres:5432/${NOTIFICATION_DB_NAME:-notification_db}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD is required}
+      QUEUE_DATABASE_URL: postgresql://${QUEUE_DB_USER:-queue_user}:${QUEUE_DB_PASSWORD:?QUEUE_DB_PASSWORD is required}@postgres:5432/${QUEUE_DB_NAME:-queue_db}
+      QUEUE_DB_PASSWORD: ${QUEUE_DB_PASSWORD:?QUEUE_DB_PASSWORD is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  seed:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.migrate
+    container_name: queueless_seed
+    profiles:
+      - seed
+    restart: "no"
+    networks:
+      - backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-queueless}
+    command: ["npm", "run", "seed"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  core:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: queueless_core
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      API_PREFIX: /api
+      FRONTEND_URL: http://localhost:8080
+      FRONTEND_ORIGIN: "http://localhost:8080"
+      TRUST_PROXY: "1"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-queueless}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN is required}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET is required}
+      JWT_REFRESH_EXPIRES_IN: 7d
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      EMAIL_FROM: "QueueLess Alerts <no-reply@queueless.local>"
+      BUSINESS_TIMEZONE: Asia/Kolkata
+      NOTIFICATIONS_ENABLED: "true"
+      NOTIFICATIONS_MODE: service
+      NOTIFICATION_SERVICE_URL: http://notification-service:3004
+      QUEUE_MODE: service
+      SOCKET_MODE: remote
+      QUEUE_SERVICE_URL: http://queue-service:3003
+      EVENT_TRANSPORT: rabbitmq
+      DEBUG_ENDPOINTS: "true"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/api/health/live | grep ok || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
 
   notification-service:
     build:
@@ -69,9 +232,24 @@ services:
       dockerfile: services/notification-service/Dockerfile
     container_name: queueless_notification_service
     restart: unless-stopped
-    env_file:
-      - .env.services
+    networks:
+      - backend
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN is required}
+      DATABASE_URL: postgresql://${NOTIFICATION_DB_USER:-notification_user}:${NOTIFICATION_DB_PASSWORD:?NOTIFICATION_DB_PASSWORD is required}@postgres:5432/${NOTIFICATION_DB_NAME:-notification_db}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      EMAIL_FROM: "QueueLess Alerts <no-reply@queueless.local>"
+      NOTIFICATIONS_ENABLED: "true"
+      BUSINESS_TIMEZONE: Asia/Kolkata
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       rabbitmq:
@@ -83,6 +261,16 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
 
   queue-service:
     build:
@@ -90,38 +278,72 @@ services:
       dockerfile: services/queue-service/Dockerfile
     container_name: queueless_queue_service
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:3003:3003"
+    networks:
+      - backend
     environment:
       NODE_ENV: production
       PORT: 3003
-      INTERNAL_TOKEN: queueless-internal-gateway-secret-key-32ch
-      CORE_SERVICE_URL: http://host.docker.internal:5000
-      DATABASE_URL: postgresql://queue_user:queue_password@postgres:5432/queue_db
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN is required}
+      CORE_SERVICE_URL: http://core:5000
+      DATABASE_URL: postgresql://${QUEUE_DB_USER:-queue_user}:${QUEUE_DB_PASSWORD:?QUEUE_DB_PASSWORD is required}@postgres:5432/${QUEUE_DB_NAME:-queue_db}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_DB: 2
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
       BUSINESS_TIMEZONE: Asia/Kolkata
       QUEUE_NOTIFY_POSITION: 3
       DEFAULT_SERVICE_MINUTES: 10
       CHECKIN_EARLY_MINUTES: 30
       CHECKIN_GRACE_MINUTES: 15
-      FRONTEND_ORIGIN: "http://localhost:5173"
+      FRONTEND_ORIGIN: "http://localhost:8080"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3003/health/live | grep ok || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: queueless_frontend
+    restart: unless-stopped
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/healthz | grep ok || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
   gateway:
     image: nginx:1.26-alpine
@@ -129,27 +351,43 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    networks:
+      - public
+      - backend
     environment:
-      BACKEND_UPSTREAM: host.docker.internal:5000
+      BACKEND_UPSTREAM: core:5000
       NOTIFICATION_UPSTREAM: notification-service:3004
       QUEUE_UPSTREAM: queue-service:3003
-      INTERNAL_TOKEN: queueless-internal-gateway-secret-key-32ch
-      NGINX_ENVSUBST_FILTER: "BACKEND_UPSTREAM|NOTIFICATION_UPSTREAM|QUEUE_UPSTREAM|INTERNAL_TOKEN"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      FRONTEND_UPSTREAM: frontend:80
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN is required}
+      NGINX_ENVSUBST_FILTER: "BACKEND_UPSTREAM|NOTIFICATION_UPSTREAM|QUEUE_UPSTREAM|FRONTEND_UPSTREAM|INTERNAL_TOKEN"
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./gateway/templates:/etc/nginx/templates:ro
     depends_on:
+      frontend:
+        condition: service_healthy
+      core:
+        condition: service_healthy
       notification-service:
-        condition: service_started
+        condition: service_healthy
       queue-service:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz | grep ok || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
 volumes:
   postgres_data:

@@ -1,6 +1,8 @@
 import express, { Express, Request, Response } from 'express';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { requestIdMiddleware, requestLogger, errorHandler, createHealthRouter } from '@queueless/common';
+import { config } from './config';
 import { query } from './db';
 import { redis } from './redis';
 import { queueRoutes, internalRouter } from './routes';
@@ -14,6 +16,22 @@ export const createQueueApp = (): Express => {
   app.use(helmet());
   app.use(requestIdMiddleware);
   app.use(requestLogger);
+
+  // Global Rate Limiter per IP
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: config.RATE_LIMIT_GLOBAL_MAX,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: {
+        code: 'TOO_MANY_REQUESTS',
+        message: 'Too many requests from this IP, please try again later',
+      },
+    },
+  });
+  app.use(limiter);
+
   app.use(express.json({ limit: '100kb' }));
 
   // Health checks router (/health/live, /health/ready, /health)

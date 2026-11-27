@@ -209,6 +209,7 @@ services:
       QUEUE_SERVICE_URL: http://queue-service:3003
       EVENT_TRANSPORT: rabbitmq
       DEBUG_ENDPOINTS: "true"
+      RATE_LIMIT_GLOBAL_MAX: ${RATE_LIMIT_GLOBAL_MAX:-1000}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -301,6 +302,8 @@ services:
       REDIS_DB: 2
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-guest}:${RABBITMQ_DEFAULT_PASS:-guest}@rabbitmq:5672
       BUSINESS_TIMEZONE: Asia/Kolkata
+      RATE_LIMIT_GLOBAL_MAX: ${RATE_LIMIT_GLOBAL_MAX:-1000}
+      RATE_LIMIT_QUEUE_MAX: ${RATE_LIMIT_QUEUE_MAX:-20}
       QUEUE_NOTIFY_POSITION: 3
       DEFAULT_SERVICE_MINUTES: 10
       CHECKIN_EARLY_MINUTES: 30
@@ -370,7 +373,11 @@ services:
       QUEUE_UPSTREAM: queue-service:3003
       FRONTEND_UPSTREAM: frontend:80
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN is required}
-      NGINX_ENVSUBST_FILTER: "BACKEND_UPSTREAM|NOTIFICATION_UPSTREAM|QUEUE_UPSTREAM|FRONTEND_UPSTREAM|INTERNAL_TOKEN"
+      GATEWAY_AUTH_RATE_LIMIT: ${GATEWAY_AUTH_RATE_LIMIT:-5r/m}
+      GATEWAY_API_RATE_LIMIT: ${GATEWAY_API_RATE_LIMIT:-20r/s}
+      GATEWAY_AUTH_BURST: ${GATEWAY_AUTH_BURST:-2}
+      GATEWAY_API_BURST: ${GATEWAY_API_BURST:-10}
+      NGINX_ENVSUBST_FILTER: "BACKEND_UPSTREAM|NOTIFICATION_UPSTREAM|QUEUE_UPSTREAM|FRONTEND_UPSTREAM|INTERNAL_TOKEN|GATEWAY_AUTH_RATE_LIMIT|GATEWAY_API_RATE_LIMIT|GATEWAY_AUTH_BURST|GATEWAY_API_BURST"
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./gateway/templates:/etc/nginx/templates:ro
@@ -384,9 +391,11 @@ services:
       notification-service:
         condition: service_healthy
         restart: true
+        required: false
       queue-service:
         condition: service_healthy
         restart: true
+        required: false
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz | grep ok || exit 1"]
       interval: 5s

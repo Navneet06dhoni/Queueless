@@ -21,7 +21,7 @@ export const queueActionLimiter = async (
       await redis.expire(key, 60);
     }
 
-    if (current > 20) {
+    if (current > config.RATE_LIMIT_QUEUE_MAX) {
       throw new ApiError(
         429,
         'RATE_LIMIT_EXCEEDED',

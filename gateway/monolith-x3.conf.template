@@ -1,0 +1,256 @@
+# Upstream clusters for Monolith-x3
+# Round-robin load balancing for general stateless API requests
+upstream core_nodes {
+    server core:5000;
+    server core-2:5000;
+    server core-3:5000;
+}
+
+# Sticky-session load balancing (ip_hash) for Socket.io stateful handshakes & WebSocket connections
+upstream socket_nodes {
+    ip_hash;
+    server core:5000;
+    server core-2:5000;
+    server core-3:5000;
+}
+
+# Rate limiting zones with configurable rates
+limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=${GATEWAY_AUTH_RATE_LIMIT};
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=${GATEWAY_API_RATE_LIMIT};
+limit_req_status 429;
+
+server {
+    listen 8080;
+    server_name _;
+
+    # Dynamic DNS resolution for frontend
+    resolver 127.0.0.11 valid=5s ipv6=off;
+    resolver_timeout 500ms;
+
+    set $frontend http://frontend:80;
+
+    # Default proxy timeouts
+    proxy_connect_timeout 500ms;
+    proxy_read_timeout 10s;
+    proxy_send_timeout 10s;
+    proxy_next_upstream_tries 1;
+
+    # Header safety & trust boundary
+    proxy_set_header X-User-Id "";
+    proxy_set_header X-User-Role "";
+    proxy_set_header X-User-Name "";
+    proxy_set_header X-User-Email "";
+    proxy_set_header X-Internal-Auth "";
+    proxy_set_header X-Internal-Role "";
+    proxy_set_header X-Internal-Secret "";
+    proxy_set_header X-Internal-UserId "";
+    proxy_set_header X-Internal-Token "";
+
+    # Forwarded standard headers
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Request-Id $gateway_request_id;
+
+    # Always return X-Request-Id
+    proxy_hide_header X-Request-Id;
+    add_header X-Request-Id $gateway_request_id always;
+
+    # Custom Error Pages returning JSON bodies matching REST format
+    error_page 401 /error_401;
+    error_page 403 /error_403;
+    error_page 413 /error_413;
+    error_page 429 /error_429;
+    error_page 500 502 503 504 =502 /error_502;
+
+    location = /error_401 {
+        internal;
+        default_type application/json;
+        return 401 '{"error":{"code":"UNAUTHORIZED","message":"Authentication required","requestId":"$gateway_request_id"}}';
+    }
+
+    location = /error_403 {
+        internal;
+        default_type application/json;
+        return 403 '{"error":{"code":"USER_BLOCKED","message":"Your account has been suspended","requestId":"$gateway_request_id"}}';
+    }
+
+    location = /error_413 {
+        internal;
+        default_type application/json;
+        return 413 '{"error":{"code":"PAYLOAD_TOO_LARGE","message":"Request entity too large","requestId":"$gateway_request_id"}}';
+    }
+
+    location = /error_429 {
+        internal;
+        default_type application/json;
+        add_header Retry-After 12 always;
+        return 429 '{"error":{"code":"RATE_LIMITED","message":"Too many requests, please try again later","requestId":"$gateway_request_id"}}';
+    }
+
+    location = /error_502 {
+        internal;
+        default_type application/json;
+        return 502 '{"error":{"code":"UPSTREAM_UNAVAILABLE","message":"Bad gateway or upstream service unavailable","requestId":"$gateway_request_id"}}';
+    }
+
+    # (1) Health check served directly by Nginx
+    location = /healthz {
+        access_log off;
+        default_type application/json;
+        return 200 '{"status":"ok"}';
+    }
+
+    # (2) Internal auth verification endpoint (used ONLY by auth_request)
+    location = /internal/auth-verify {
+        internal;
+        proxy_pass http://core_nodes/api/auth/verify;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Request-Id $gateway_request_id;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-User-Id "";
+        proxy_set_header X-User-Role "";
+        proxy_set_header X-User-Name "";
+        proxy_set_header X-User-Email "";
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 2s;
+    }
+
+    # Block all other /internal/ routes from external clients
+    location ^~ /internal/ {
+        default_type application/json;
+        return 404 '{"error":{"code":"NOT_FOUND","message":"Resource not found","requestId":"$gateway_request_id"}}';
+    }
+
+    # (3) Rate-limited auth routes
+    location = /api/auth/login {
+        limit_req zone=auth_limit burst=${GATEWAY_AUTH_BURST} nodelay;
+        proxy_pass http://core_nodes$request_uri;
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 5s;
+    }
+
+    location = /api/auth/register {
+        limit_req zone=auth_limit burst=${GATEWAY_AUTH_BURST} nodelay;
+        proxy_pass http://core_nodes$request_uri;
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 5s;
+    }
+
+    # (4) Canary auth_request verification on /api/auth/me
+    location = /api/auth/me {
+        auth_request /internal/auth-verify;
+        auth_request_set $auth_user_id $upstream_http_x_user_id;
+        auth_request_set $auth_user_role $upstream_http_x_user_role;
+        auth_request_set $auth_user_name $upstream_http_x_user_name;
+        auth_request_set $auth_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://core_nodes$request_uri;
+        proxy_set_header X-User-Id $auth_user_id;
+        proxy_set_header X-User-Role $auth_user_role;
+        proxy_set_header X-User-Name $auth_user_name;
+        proxy_set_header X-User-Email $auth_user_email;
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 5s;
+    }
+
+    # (5) Notification Service Routing
+    location /api/notifications {
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
+        auth_request /internal/auth-verify;
+        auth_request_set $auth_user_id $upstream_http_x_user_id;
+        auth_request_set $auth_user_role $upstream_http_x_user_role;
+        auth_request_set $auth_user_name $upstream_http_x_user_name;
+        auth_request_set $auth_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://core_nodes$request_uri;
+        proxy_set_header X-User-Id $auth_user_id;
+        proxy_set_header X-User-Role $auth_user_role;
+        proxy_set_header X-User-Name $auth_user_name;
+        proxy_set_header X-User-Email $auth_user_email;
+        proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 5s;
+    }
+
+    location = /api/admin/notifications {
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
+        auth_request /internal/auth-verify;
+        auth_request_set $auth_user_id $upstream_http_x_user_id;
+        auth_request_set $auth_user_role $upstream_http_x_user_role;
+        auth_request_set $auth_user_name $upstream_http_x_user_name;
+        auth_request_set $auth_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://core_nodes$request_uri;
+        proxy_set_header X-User-Id $auth_user_id;
+        proxy_set_header X-User-Role $auth_user_role;
+        proxy_set_header X-User-Name $auth_user_name;
+        proxy_set_header X-User-Email $auth_user_email;
+        proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 5s;
+    }
+
+    # (6) Public queue status route
+    location ~* ^/api/queue/([a-f0-9\-]+)/status$ {
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
+        proxy_pass http://core_nodes$request_uri;
+        proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 10s;
+    }
+
+    # (7) Queue service authenticated routes with auth_request
+    location /api/queue/ {
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
+        auth_request /internal/auth-verify;
+        auth_request_set $auth_user_id $upstream_http_x_user_id;
+        auth_request_set $auth_user_role $upstream_http_x_user_role;
+        auth_request_set $auth_user_name $upstream_http_x_user_name;
+        auth_request_set $auth_user_email $upstream_http_x_user_email;
+
+        proxy_pass http://core_nodes$request_uri;
+        proxy_set_header X-User-Id $auth_user_id;
+        proxy_set_header X-User-Role $auth_user_role;
+        proxy_set_header X-User-Name $auth_user_name;
+        proxy_set_header X-User-Email $auth_user_email;
+        proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 10s;
+    }
+
+    # (8) WebSocket proxying with sticky sessions via socket_nodes (ip_hash)
+    location /socket.io/ {
+        proxy_pass http://socket_nodes$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Request-Id $gateway_request_id;
+        proxy_set_header X-Internal-Token "${INTERNAL_TOKEN}";
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+    # (9) General API proxy with round-robin load balancing
+    location /api/ {
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
+        proxy_pass http://core_nodes$request_uri;
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 10s;
+    }
+
+    # Default frontend SPA proxying
+    location / {
+        proxy_pass $frontend$request_uri;
+        proxy_connect_timeout 500ms;
+        proxy_read_timeout 10s;
+    }
+}

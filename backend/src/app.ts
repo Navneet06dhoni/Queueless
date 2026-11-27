@@ -71,7 +71,7 @@ export const createApp = (): Express => {
   // Global Rate Limiter
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 1000, // Limit each IP to 1000 requests per windowMs
+    max: config.RATE_LIMIT_GLOBAL_MAX, // Limit each IP per windowMs (default 1000)
     standardHeaders: true,
     legacyHeaders: false,
     message: {

@@ -44,6 +44,8 @@ export const configSchema = z.object({
   CHECKIN_GRACE_MINUTES: z.coerce.number().default(15),
   BUSINESS_TIMEZONE: z.string().default('Asia/Kolkata'),
   FRONTEND_ORIGIN: z.string().optional().default('*'),
+  RATE_LIMIT_GLOBAL_MAX: z.coerce.number().default(1000),
+  RATE_LIMIT_QUEUE_MAX: z.coerce.number().default(20),
 });
 
 export const config = loadConfig(configSchema);

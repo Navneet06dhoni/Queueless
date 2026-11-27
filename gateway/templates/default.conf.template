@@ -1,5 +1,10 @@
 # Note: Sticky sessions (ip_hash) will return via an upstream load-balancing pool when queue-service scales to multiple instances.
 
+# Rate limiting zones with configurable rates (preserving default rates: 5r/m and 20r/s)
+limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=${GATEWAY_AUTH_RATE_LIMIT};
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=${GATEWAY_API_RATE_LIMIT};
+limit_req_status 429;
+
 server {
     listen 8080;
     server_name _;
@@ -126,14 +131,14 @@ server {
 
     # (3) Rate-limited auth routes (edge limit: 5 req/min, burst 2, nodelay)
     location = /api/auth/login {
-        limit_req zone=auth_limit burst=2 nodelay;
+        limit_req zone=auth_limit burst=${GATEWAY_AUTH_BURST} nodelay;
         proxy_pass $core$request_uri;
         proxy_connect_timeout 500ms;
         proxy_read_timeout 5s;
     }
 
     location = /api/auth/register {
-        limit_req zone=auth_limit burst=2 nodelay;
+        limit_req zone=auth_limit burst=${GATEWAY_AUTH_BURST} nodelay;
         proxy_pass $core$request_uri;
         proxy_connect_timeout 500ms;
         proxy_read_timeout 5s;
@@ -163,7 +168,7 @@ server {
 
     # (5) Notification Service Routing with auth_request
     location /api/notifications {
-        limit_req zone=api_limit burst=10 nodelay;
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
         auth_request /internal/auth-verify;
         auth_request_set $auth_user_id $upstream_http_x_user_id;
         auth_request_set $auth_user_role $upstream_http_x_user_role;
@@ -186,7 +191,7 @@ server {
     }
 
     location = /api/admin/notifications {
-        limit_req zone=api_limit burst=10 nodelay;
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
         auth_request /internal/auth-verify;
         auth_request_set $auth_user_id $upstream_http_x_user_id;
         auth_request_set $auth_user_role $upstream_http_x_user_role;
@@ -210,7 +215,7 @@ server {
 
     # (6) Public queue status route (anonymous, no auth_request)
     location ~* ^/api/queue/([a-f0-9\-]+)/status$ {
-        limit_req zone=api_limit burst=10 nodelay;
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
         proxy_pass $queue$request_uri;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $remote_addr;
@@ -228,7 +233,7 @@ server {
 
     # (7) Queue service authenticated routes with auth_request
     location /api/queue/ {
-        limit_req zone=api_limit burst=10 nodelay;
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
         auth_request /internal/auth-verify;
         auth_request_set $auth_user_id $upstream_http_x_user_id;
         auth_request_set $auth_user_role $upstream_http_x_user_role;
@@ -271,7 +276,7 @@ server {
 
     # (9) General API proxy with rate limiting (20 req/s, burst 10, nodelay)
     location /api/ {
-        limit_req zone=api_limit burst=10 nodelay;
+        limit_req zone=api_limit burst=${GATEWAY_API_BURST} nodelay;
         proxy_pass $core$request_uri;
         proxy_connect_timeout 500ms;
         proxy_read_timeout 10s;

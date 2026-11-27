@@ -1,0 +1,38 @@
+services:
+  core:
+    environment:
+      QUEUE_MODE: embedded
+      SOCKET_MODE: embedded
+      NOTIFICATIONS_MODE: embedded
+      RATE_LIMIT_GLOBAL_MAX: ${RATE_LIMIT_GLOBAL_MAX:-1000}
+    deploy:
+      resources:
+        limits:
+          cpus: "3.0"
+          memory: 1536M
+
+  queue-service:
+    profiles: ["disabled"]
+    deploy:
+      replicas: 0
+
+  notification-service:
+    profiles: ["disabled"]
+    deploy:
+      replicas: 0
+
+  gateway:
+    depends_on:
+      frontend:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+    environment:
+      BACKEND_UPSTREAM: core:5000
+      NOTIFICATION_UPSTREAM: core:5000
+      QUEUE_UPSTREAM: core:5000
+      GATEWAY_AUTH_RATE_LIMIT: ${GATEWAY_AUTH_RATE_LIMIT:-5r/m}
+      GATEWAY_API_RATE_LIMIT: ${GATEWAY_API_RATE_LIMIT:-20r/s}
+      GATEWAY_AUTH_BURST: ${GATEWAY_AUTH_BURST:-2}
+      GATEWAY_API_BURST: ${GATEWAY_API_BURST:-10}
+      NGINX_ENVSUBST_FILTER: "BACKEND_UPSTREAM|NOTIFICATION_UPSTREAM|QUEUE_UPSTREAM|FRONTEND_UPSTREAM|INTERNAL_TOKEN|GATEWAY_AUTH_RATE_LIMIT|GATEWAY_API_RATE_LIMIT|GATEWAY_AUTH_BURST|GATEWAY_API_BURST"

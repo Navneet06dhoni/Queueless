@@ -93,6 +93,7 @@ export const envSchema = z.object({
   SOCKET_MODE: z.enum(['embedded', 'remote']).default('remote'),
   QUEUE_SERVICE_URL: z.string().default('http://localhost:3003'),
   DEBUG_ENDPOINTS: z.string().default('false'),
+  RATE_LIMIT_GLOBAL_MAX: z.coerce.number().default(1000),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);

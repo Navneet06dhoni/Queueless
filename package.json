@@ -40,6 +40,13 @@
     "test:gateway": "tsx scripts/gateway-smoke.ts",
     "check:secrets": "node scripts/check-secrets.js",
     "test:services": "npm --prefix services/notification-service test && npm --prefix services/queue-service test",
+    "bench:up:monolith": "tsx scripts/bench-up.ts monolith",
+    "bench:up:monolith-x3": "tsx scripts/bench-up.ts monolith-x3",
+    "bench:up:micro": "tsx scripts/bench-up.ts micro",
+    "smoke:monolith": "tsx scripts/monolith-smoke.ts",
+    "smoke:monolith-x3": "tsx scripts/monolith-smoke.ts",
+    "bench:smoke": "tsx scripts/bench-smoke.ts",
+    "bench:all": "tsx scripts/bench-all.ts",
     "verify": "npm --prefix backend run docs:export && npm --prefix packages/contracts test && npm --prefix packages/common test && npm --prefix packages/messaging test && npm --prefix services/notification-service test && npm --prefix services/queue-service test && npm --prefix backend test && npm run gateway:lint && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix backend run build && npm --prefix frontend run build"
   },
   "keywords": [

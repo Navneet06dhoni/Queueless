@@ -8,5 +8,6 @@ paths = [
     '''(^|/)\.env\.test$''',
     '''(^|/)node_modules/''',
     '''(^|/)dist/''',
+    '''(^|/)bench/tokens\.json$''',
     '''(^|/)\.git/'''
 ]

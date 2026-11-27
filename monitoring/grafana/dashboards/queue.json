@@ -1,0 +1,82 @@
+{
+  "uid": "queueless-queue",
+  "title": "QueueLess - Queue",
+  "tags": ["queueless", "queue"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Queue Joins & Calls per Minute",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(queueless_queue_joins_total[1m]) * 60",
+          "legendFormat": "Joins / min",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(queueless_queue_calls_total[1m]) * 60",
+          "legendFormat": "Calls / min",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "opm", "min": 0 } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total Waiting Customers",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "queueless_queue_waiting_total",
+          "legendFormat": "Waiting",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Active Socket Connections",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "queueless_socket_connections_active",
+          "legendFormat": "Sockets",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Redis Latency (p50 / p95)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, operation) (rate(queueless_redis_latency_seconds_bucket[1m])))",
+          "legendFormat": "{{operation}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(queueless_redis_latency_seconds_bucket[1m])))",
+          "legendFormat": "{{operation}} p95",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ]
+}

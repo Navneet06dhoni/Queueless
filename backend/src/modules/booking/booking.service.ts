@@ -7,6 +7,7 @@ import { config } from '../../config';
 import { events } from '../../events';
 import { ApiError } from '../../utils/ApiError';
 import { now } from '../../utils/clock';
+import { bookingsCreatedTotal, bookingConflictsTotal } from '../../metrics';
 import {
   IAppointment,
   AppointmentDetail,
@@ -37,6 +38,7 @@ export class BookingService {
         }
 
         if (slot.status !== 'free') {
+          bookingConflictsTotal.inc();
           throw ApiError.conflict('Slot is already booked', 'SLOT_ALREADY_BOOKED');
         }
 
@@ -62,6 +64,7 @@ export class BookingService {
           slot.end_time
         );
         if (hasConflict) {
+          bookingConflictsTotal.inc();
           throw ApiError.conflict(
             'You already have another confirmed appointment during this time window',
             'OVERLAPPING_APPOINTMENT'
@@ -101,10 +104,13 @@ export class BookingService {
     } catch (err: any) {
       // Catch partial unique index violation (code 23505) and translate to 409
       if (err.code === '23505') {
+        bookingConflictsTotal.inc();
         throw ApiError.conflict('Slot is already booked', 'SLOT_ALREADY_BOOKED');
       }
       throw err;
     }
+
+    bookingsCreatedTotal.inc();
 
     return {
       id: bookedAppt!.id,
@@ -308,6 +314,7 @@ export class BookingService {
           appt.id
         );
         if (hasConflict) {
+          bookingConflictsTotal.inc();
           throw ApiError.conflict(
             'You already have another confirmed appointment during this time window',
             'OVERLAPPING_APPOINTMENT'

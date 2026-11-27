@@ -69,6 +69,7 @@ describe('OpenAPI Contract Test', () => {
       'GET /api/docs/*',
       'USE /api/docs',
       'GET /internal/debug/client-ip',
+      'GET /metrics',
     ]);
 
     const expressRouteSet = new Set(

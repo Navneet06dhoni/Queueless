@@ -1,0 +1,94 @@
+{
+  "uid": "queueless-messaging",
+  "title": "QueueLess - Messaging",
+  "tags": ["queueless", "messaging"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "RabbitMQ Queue Depths per Queue",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rabbitmq_queue_messages",
+          "legendFormat": "{{queue}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Core Outbox Pending & Oldest Age",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "queueless_outbox_pending_count",
+          "legendFormat": "Pending Count",
+          "refId": "A"
+        },
+        {
+          "expr": "queueless_outbox_oldest_pending_age_seconds",
+          "legendFormat": "Oldest Age (s)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Emails Sent vs Failed",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(queueless_emails_sent_total[1m]) * 60",
+          "legendFormat": "Sent / min",
+          "refId": "A"
+        },
+        {
+          "expr": "(rate(queueless_emails_failed_total[1m]) or (queueless_emails_sent_total * 0)) * 60",
+          "legendFormat": "Failed / min",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "opm", "min": 0 } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Dead-Letter Queue Depth (queueless.dlq)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "queueless_dlq_depth{queue=\"queueless.dlq\"}",
+          "legendFormat": "DLQ Depth",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

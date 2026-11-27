@@ -4,6 +4,7 @@ import { requestIdMiddleware, requestLogger, errorHandler, createHealthRouter } 
 import { pool, query } from './db';
 import { notificationRoutes } from './routes';
 import { notificationConsumerManager } from './events/consumer';
+import { notificationMetrics } from './metrics';
 
 export const createNotificationApp = (): Express => {
   const app = express();
@@ -11,7 +12,10 @@ export const createNotificationApp = (): Express => {
   app.use(helmet());
   app.use(requestIdMiddleware);
   app.use(requestLogger);
+  app.use(notificationMetrics.metricsMiddleware);
   app.use(express.json({ limit: '100kb' }));
+
+  app.get('/metrics', notificationMetrics.metricsHandler);
 
   // Health checks router (/health/live, /health/ready, /health)
   const healthRouter = createHealthRouter({

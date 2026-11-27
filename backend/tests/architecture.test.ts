@@ -177,10 +177,10 @@ describe('Architecture & Module Boundary Tests', () => {
       const contractsDeps = Object.keys(contractsPkg.dependencies || {});
       expect(contractsDeps).toEqual(['zod']);
 
-      // common depends on zod, express, pino, pino-http, @queueless/contracts
+      // common depends on zod, express, pino, pino-http, prom-client, @queueless/contracts
       const commonDeps = Object.keys(commonPkg.dependencies || {}).sort();
       expect(commonDeps).toEqual(
-        ['@queueless/contracts', 'express', 'pino', 'pino-http', 'zod'].sort()
+        ['@queueless/contracts', 'express', 'pino', 'pino-http', 'prom-client', 'zod'].sort()
       );
 
       // messaging depends on amqplib, zod, @queueless/contracts, @queueless/common

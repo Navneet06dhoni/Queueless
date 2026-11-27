@@ -6,6 +6,13 @@ import { notificationRepository, NotificationRepository } from './repository';
 import { INotification, NotificationPayload, NotificationStatus } from './types';
 import { OutboxRepository, OutboxRelay } from '@queueless/messaging';
 import {
+  notificationsCreatedTotal,
+  emailsSentTotal,
+  emailsFailedTotal,
+  emailRetriesTotal,
+  notificationProcessingDurationSeconds,
+} from './metrics';
+import {
   appointmentReminder,
   bookingCancelledCustomer,
   bookingCancelledOwner,
@@ -42,6 +49,7 @@ export class NotificationService {
   }
 
   async sendNotification(payload: NotificationPayload, externalClient?: PoolClient): Promise<INotification | null> {
+    const startNs = process.hrtime.bigint();
     const hasEmail = !!payload.emailOptions && config.NOTIFICATIONS_ENABLED;
 
     const client = externalClient || (await pool.connect());
@@ -66,6 +74,7 @@ export class NotificationService {
       );
 
       if (notification) {
+        notificationsCreatedTotal.inc({ type: payload.type });
         // Enqueue notification.created into transactional outbox
         await this.outboxRepo.createOutboxEvent(
           {
@@ -127,12 +136,16 @@ export class NotificationService {
         try {
           await getEmailTransport().sendMail(payload.emailOptions);
           await this.repo.updateEmailStatus(notification.id, 'sent', attempt);
+          emailsSentTotal.inc();
+          notificationProcessingDurationSeconds.observe(Number(process.hrtime.bigint() - startNs) / 1e9);
           return notification;
         } catch (err: any) {
           lastErrorMsg = err?.message || 'Email delivery failed';
           if (attempt === maxAttempts) {
             await this.repo.updateEmailStatus(notification.id, 'failed', attempt, lastErrorMsg);
+            emailsFailedTotal.inc();
           } else {
+            emailRetriesTotal.inc();
             const delay = retryDelays[attempt - 1] ?? 1000;
             await this.sleep(delay);
           }
@@ -140,6 +153,7 @@ export class NotificationService {
       }
     }
 
+    notificationProcessingDurationSeconds.observe(Number(process.hrtime.bigint() - startNs) / 1e9);
     return notification;
   }
 

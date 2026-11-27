@@ -320,6 +320,76 @@ Currently, the monolith core hosts the `users` table and the `/internal/auth/ver
 
 **Honest Assessment:** The core monolith is currently a **hard single point of failure for authentication**. Even though the Queue service and Notification service are isolated microservices with independent databases and separate containers, no client can make an authenticated REST call to either service if the core monolith process is down. This hard dependency provides clear architectural justification and priority for extracting an independent **Auth & Identity Microservice** in the next phase of decomposition, allowing authentication tokens to be validated independently (e.g. via stateless JWT verification or a dedicated lightweight Auth service) without depending on the monolith.
 
+---
+
+## 📊 Observability & Monitoring Architecture (Phase 11C)
+
+### 1. Networks & Published Ports Table
+
+| Service / Container | Docker Network(s) | Internal Port(s) | Host Published Port | Exposure / Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| `gateway` (`nginx:1.26-alpine`) | `queueless_public`, `queueless_backend` | `8080`, `8081` | `0.0.0.0:8080->8080` | Public API & SPA entry; `8081` serves `/stub_status` internally only |
+| `core` (`queueless-core`) | `queueless_backend` | `5000` | *None* | Monolith API & `/metrics` (internal scrape only) |
+| `queue-service` | `queueless_backend` | `3003` | *None* | Queue REST, Socket.io & `/metrics` (internal scrape only) |
+| `notification-service` | `queueless_backend` | `3004` | *None* | Notification REST, consumer & `/metrics` (internal scrape only) |
+| `frontend` | `queueless_backend` | `80` | *None* | Static React/Vite bundle served behind gateway |
+| `postgres` (`postgres:16-alpine`) | `queueless_backend` | `5432` | `127.0.0.1:5432` | Loopback-only local DB access |
+| `redis` (`redis:7-alpine`) | `queueless_backend` | `6379` | `127.0.0.1:6379` | Loopback-only local Redis access |
+| `rabbitmq` (`rabbitmq:3-management`) | `queueless_backend` | `5672`, `15672`, `15692` | `127.0.0.1:5672`, `127.0.0.1:15672` | Loopback AMQP/UI; `15692` Prometheus plugin internal only |
+| `mailhog` | `queueless_backend` | `1025`, `8025` | `127.0.0.1:1025`, `127.0.0.1:8025` | Loopback SMTP/UI for dev testing |
+| `nginx-exporter` (`1.4.1`) | `queueless_backend` | `9113` | *None* | Scrapes `http://gateway:8081/stub_status` |
+| `prometheus` (`v2.55.1`) | `queueless_backend` | `9090` | `127.0.0.1:9090` | Loopback-only Prometheus UI & HTTP API (2d retention) |
+| `grafana` (`11.3.1`) | `queueless_backend` | `3000` | `127.0.0.1:3000` | Loopback-only Grafana UI (anonymous access disabled) |
+
+> **Security Invariant:** Public gateway (`:8080`) explicitly blocks `/metrics`, `/stub_status`, `/prometheus`, and `/grafana` with HTTP `404` JSON before the SPA fallback.
+
+### 2. Metrics Catalogue
+
+#### Shared HTTP & Process Metrics (`@queueless/common` — `core`, `queue-service`, `notification-service`)
+- `process_*` / `nodejs_*`: Default Node.js process & event-loop metrics (`collectDefaultMetrics`)
+- `http_requests_total{method, route, status_class, service}` (Counter): HTTP requests labelled by low-cardinality Express route pattern (never raw URLs, UUIDs, or emails)
+- `http_request_duration_seconds{method, route, status_class, service}` (Histogram): HTTP latency distribution
+- `http_in_flight_requests{service}` (Gauge): Active concurrent HTTP requests
+
+#### Domain Metrics
+| Service | Metric Name | Type | Labels | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `core` | `queueless_bookings_created_total` | Counter | — | Confirmed appointments created |
+| `core` | `queueless_booking_conflicts_total` | Counter | — | Booking conflicts (`HTTP 409`) |
+| `core` | `queueless_outbox_pending_count` | Gauge | — | Pending rows in `outbox_events` |
+| `core` | `queueless_outbox_oldest_pending_age_seconds` | Gauge | — | Age in seconds of oldest pending outbox row |
+| `core` | `queueless_db_pool_in_use` | Gauge | — | Active PostgreSQL pool connections |
+| `core` | `queueless_db_pool_waiting` | Gauge | — | Clients waiting for a DB pool connection |
+| `queue-service` | `queueless_queue_joins_total` | Counter | — | Customer queue joins / check-ins |
+| `queue-service` | `queueless_queue_calls_total` | Counter | — | Owner `callNext` invocations |
+| `queue-service` | `queueless_queue_waiting_total` | Gauge | — | Total waiting customers across all queues |
+| `queue-service` | `queueless_socket_connections_active` | Gauge | — | Active Socket.io client connections |
+| `queue-service` | `queueless_redis_latency_seconds` | Histogram | `operation` | Redis operation latency (`add_entry`, `pop_next`, `get_position`, `get_waiting_count`) |
+| `notification-service` | `queueless_notifications_created_total` | Counter | `type` | In-app notifications created by event type |
+| `notification-service` | `queueless_emails_sent_total` | Counter | — | Emails delivered via SMTP |
+| `notification-service` | `queueless_emails_failed_total` | Counter | — | Emails failed after all retry attempts |
+| `notification-service` | `queueless_email_retries_total` | Counter | — | Email delivery retry attempts |
+| `notification-service` | `queueless_notification_processing_duration_seconds` | Histogram | — | End-to-end notification processing latency |
+| `notification-service` | `queueless_dlq_depth` | Gauge | `queue` | Dead-letter queue depth (`queueless.dlq` via RabbitMQ Management API) |
+
+### 3. Alert Catalogue (`monitoring/prometheus/rules/alerts.yml`)
+
+| Alert Name | Condition | `for` Duration | Severity | Meaning |
+| :--- | :--- | :--- | :--- | :--- |
+| `ServiceDown` | `up{job=~"core\|queue-service\|notification-service\|rabbitmq\|nginx-gateway"} == 0` | `1m` | `critical` | Scrape target unreachable for 1 minute |
+| `High5xxErrorRate` | `5xx / total > 0.05` | `5m` | `critical` | Service returning > 5% HTTP 5xx errors over 5 minutes |
+| `HighP95Latency` | `p95(http_request_duration_seconds) > 1` | `5m` | `warning` | Service p95 HTTP latency above 1s for 5 minutes |
+| `OutboxOldestPendingAgeHigh` | `queueless_outbox_oldest_pending_age_seconds > 60` | `15s` | `warning` | Outbox relay stalled (e.g., RabbitMQ down) for > 60s |
+| `DeadLetterQueueNotEmpty` | `queueless_dlq_depth > 0 or rabbitmq_queue_messages{queue="queueless.dlq"} > 0` | `15s` | `critical` | Poison message landed in `queueless.dlq` |
+| `RabbitMQQueueDepthHigh` | `rabbitmq_queue_messages > 100` | `5m` | `warning` | Backlog > 100 messages in any RabbitMQ queue for 5 minutes |
+
+### 4. How to Read Each Grafana Dashboard (`http://127.0.0.1:3000`)
+
+- **QueueLess - Overview (`queueless-overview`)**: Top `Service Up / Down` stat panel shows live scrape health (`UP`/`DOWN`) for all 5 targets. Below it, `HTTP Request Rate (RPS)`, `HTTP 5xx Error Rate`, and `Latency p50 / p95 / p99` compare traffic volume, error spikes, and tail latency per service (`core`, `queue-service`, `notification-service`).
+- **QueueLess - Queue (`queueless-queue`)**: Tracks `Queue Joins & Calls per Minute`, real-time `Total Waiting Customers`, `Active Socket Connections`, and `Redis Latency (p50 / p95)` broken down by Redis operation.
+- **QueueLess - Messaging (`queueless-messaging`)**: Tracks `RabbitMQ Queue Depths per Queue`, `Core Outbox Pending & Oldest Age` (spotting broker disconnects immediately), `Emails Sent vs Failed`, and `Dead-Letter Queue Depth (queueless.dlq)` (turning red whenever any poison event enters the DLQ).
+
+
 
 
 

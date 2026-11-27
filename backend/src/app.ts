@@ -22,6 +22,7 @@ import configRoutes from './modules/config/config.routes';
 import internalRoutes from './modules/internal/internal.routes';
 import { requireInternalToken } from './middleware/internalAuth';
 import { generateOpenApiSpec } from './docs/openapi';
+import { coreMetrics } from './metrics';
 
 export const createApp = (): Express => {
   const app = express();
@@ -38,6 +39,10 @@ export const createApp = (): Express => {
   // Request ID & Logger middleware (must be first)
   app.use(requestIdMiddleware);
   app.use(requestLogger);
+  app.use(coreMetrics.metricsMiddleware);
+
+  // Internal Prometheus metrics endpoint (never exposed via gateway or OpenAPI)
+  app.get('/metrics', coreMetrics.metricsHandler);
 
   // Security headers with strict Content-Security-Policy
   app.use(

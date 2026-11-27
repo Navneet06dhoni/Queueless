@@ -6,6 +6,22 @@ import { IQueueEntryRedis } from '../types';
 const isTest = config.NODE_ENV === 'test';
 export const redisDb = isTest ? 3 : config.REDIS_DB;
 
+let latencyObserver: ((operation: string, seconds: number) => void) | null = null;
+export const setRedisLatencyObserver = (fn: (operation: string, seconds: number) => void): void => {
+  latencyObserver = fn;
+};
+
+async function measureRedis<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+  const startNs = process.hrtime.bigint();
+  try {
+    return await fn();
+  } finally {
+    if (latencyObserver) {
+      latencyObserver(operation, Number(process.hrtime.bigint() - startNs) / 1e9);
+    }
+  }
+}
+
 export const redis = new Redis({
   host: config.REDIS_HOST,
   port: config.REDIS_PORT,
@@ -60,20 +76,22 @@ export class QueueRedisClient {
   }
 
   async addEntry(businessId: string, entry: IQueueEntryRedis): Promise<void> {
-    const queueKey = this.getQueueKey(businessId);
-    const entriesKey = this.getEntriesKey(businessId);
-    const serialized = JSON.stringify(entry);
+    return measureRedis('add_entry', async () => {
+      const queueKey = this.getQueueKey(businessId);
+      const entriesKey = this.getEntriesKey(businessId);
+      const serialized = JSON.stringify(entry);
 
-    const pipeline = this.redis.pipeline();
-    pipeline.zadd(queueKey, entry.score, entry.id);
-    pipeline.hset(entriesKey, entry.id, serialized);
+      const pipeline = this.redis.pipeline();
+      pipeline.zadd(queueKey, entry.score, entry.id);
+      pipeline.hset(entriesKey, entry.id, serialized);
 
-    if (entry.customerId) {
-      const userKey = this.getUserKey(entry.customerId);
-      pipeline.set(userKey, JSON.stringify({ businessId, entryId: entry.id }));
-    }
+      if (entry.customerId) {
+        const userKey = this.getUserKey(entry.customerId);
+        pipeline.set(userKey, JSON.stringify({ businessId, entryId: entry.id }));
+      }
 
-    await pipeline.exec();
+      await pipeline.exec();
+    });
   }
 
   async popNext(businessId: string): Promise<{ prev: IQueueEntryRedis | null; next: IQueueEntryRedis | null } | null> {
@@ -171,12 +189,16 @@ export class QueueRedisClient {
   }
 
   async getPosition(businessId: string, entryId: string): Promise<number | null> {
-    const rank = await this.redis.zrank(this.getQueueKey(businessId), entryId);
-    return rank !== null ? rank + 1 : null;
+    return measureRedis('get_position', async () => {
+      const rank = await this.redis.zrank(this.getQueueKey(businessId), entryId);
+      return rank !== null ? rank + 1 : null;
+    });
   }
 
   async getWaitingCount(businessId: string): Promise<number> {
-    return await this.redis.zcard(this.getQueueKey(businessId));
+    return measureRedis('get_waiting_count', async () => {
+      return await this.redis.zcard(this.getQueueKey(businessId));
+    });
   }
 
   async getCurrent(businessId: string): Promise<IQueueEntryRedis | null> {

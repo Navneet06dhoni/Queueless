@@ -1,0 +1,67 @@
+groups:
+  - name: queueless-alerts
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~"core|queue-service|notification-service|rabbitmq|nginx-gateway"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Prometheus target {{ $labels.instance }} (job {{ $labels.job }}) has been unreachable for 1 minute."
+
+      - alert: High5xxErrorRate
+        expr: |
+          (
+            sum by (service) (rate(http_requests_total{status_class="5xx"}[5m]))
+            /
+            clamp_min(sum by (service) (rate(http_requests_total[5m])), 1e-9)
+          ) > 0.05
+          and
+          sum by (service) (rate(http_requests_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate on {{ $labels.service }}"
+          description: "HTTP 5xx error rate for {{ $labels.service }} has exceeded 5% for 5 minutes."
+
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on {{ $labels.service }}"
+          description: "HTTP p95 latency for {{ $labels.service }} has exceeded 1 second for 5 minutes."
+
+      - alert: OutboxOldestPendingAgeHigh
+        expr: queueless_outbox_oldest_pending_age_seconds > 60
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Core outbox oldest pending event exceeds 60s"
+          description: "Oldest unpublished event in the core outbox table is {{ $value }}s old (> 60s)."
+
+      - alert: DeadLetterQueueNotEmpty
+        expr: queueless_dlq_depth{queue="queueless.dlq"} > 0 or rabbitmq_queue_messages{queue="queueless.dlq"} > 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Messages detected in dead-letter queue"
+          description: "Dead-letter queue queueless.dlq currently has {{ $value }} message(s)."
+
+      - alert: RabbitMQQueueDepthHigh
+        expr: rabbitmq_queue_messages > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ queue {{ $labels.queue }} depth > 100"
+          description: "RabbitMQ queue {{ $labels.queue }} has held more than 100 messages for 5 minutes."

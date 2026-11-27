@@ -282,10 +282,31 @@ server {
         proxy_read_timeout 10s;
     }
 
+    # Block monitoring paths from public access (must precede frontend SPA fallback)
+    location ~* ^/(metrics|stub_status|prometheus|grafana)(/|$) {
+        default_type application/json;
+        return 404 '{"error":{"code":"NOT_FOUND","message":"Resource not found","requestId":"$gateway_request_id"}}';
+    }
+
     # Default frontend SPA proxying
     location / {
         proxy_pass $frontend$request_uri;
         proxy_connect_timeout 500ms;
         proxy_read_timeout 10s;
+    }
+}
+
+# Internal-only server for Nginx stub_status (never published on host)
+server {
+    listen 8081;
+    server_name _;
+
+    location = /stub_status {
+        stub_status;
+        access_log off;
+    }
+
+    location / {
+        return 404;
     }
 }

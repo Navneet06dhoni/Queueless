@@ -7,6 +7,7 @@ import { pool } from './db';
 import { queueRepository, QueueRepository } from './repository';
 import { queueRedisClient, QueueRedisClient } from './redis';
 import { coreClient, CoreClient } from './coreClient';
+import { queueJoinsTotal, queueCallsTotal } from './metrics';
 import {
   CustomerQueuePosition,
   IQueueEntryRedis,
@@ -290,6 +291,7 @@ export class QueueService {
     }
 
     this.triggerOutbox();
+    queueJoinsTotal.inc();
 
     await this.broadcastQueueState(businessId);
     emitQueuePosition(customerId, {
@@ -470,6 +472,7 @@ export class QueueService {
     }
 
     this.triggerOutbox();
+    queueJoinsTotal.inc();
 
     await this.broadcastQueueState(businessId);
     await this.updateWaitingPositions(businessId);
@@ -716,6 +719,7 @@ export class QueueService {
     }
 
     this.triggerOutbox();
+    queueCallsTotal.inc();
 
     await this.broadcastQueueState(businessId);
     await this.updateWaitingPositions(businessId);

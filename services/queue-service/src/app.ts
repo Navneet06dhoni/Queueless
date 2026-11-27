@@ -9,6 +9,7 @@ import { queueRoutes, internalRouter } from './routes';
 import { queueService } from './service';
 import { queueConsumerManager } from './events/consumer';
 import { getQueueOpenApiSpec } from './docs/openapi';
+import { queueMetrics } from './metrics';
 
 export const createQueueApp = (): Express => {
   const app = express();
@@ -16,6 +17,9 @@ export const createQueueApp = (): Express => {
   app.use(helmet());
   app.use(requestIdMiddleware);
   app.use(requestLogger);
+  app.use(queueMetrics.metricsMiddleware);
+
+  app.get('/metrics', queueMetrics.metricsHandler);
 
   // Global Rate Limiter per IP
   const limiter = rateLimit({

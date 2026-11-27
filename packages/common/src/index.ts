@@ -6,3 +6,4 @@ export * from './health';
 export * from './shutdown';
 export * from './config';
 export * from './internalClient';
+export * from './metrics';

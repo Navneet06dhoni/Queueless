@@ -47,7 +47,8 @@
     "smoke:monolith-x3": "tsx scripts/monolith-smoke.ts",
     "bench:smoke": "tsx scripts/bench-smoke.ts",
     "bench:all": "tsx scripts/bench-all.ts",
-    "verify": "npm --prefix backend run docs:export && npm --prefix packages/contracts test && npm --prefix packages/common test && npm --prefix packages/messaging test && npm --prefix services/notification-service test && npm --prefix services/queue-service test && npm --prefix backend test && npm run gateway:lint && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix backend run build && npm --prefix frontend run build"
+    "demo:load": "tsx scripts/demo-load.ts",
+    "verify": "npm --prefix packages/common run build && npm --prefix backend run docs:export && npm --prefix packages/contracts test && npm --prefix packages/common test && npm --prefix packages/messaging test && npm --prefix services/notification-service test && npm --prefix services/queue-service test && npm --prefix backend test && npm run gateway:lint && node -e \"const {execSync}=require('child_process'); execSync('docker run --rm --entrypoint promtool -v \\\"'+process.cwd()+'/monitoring/prometheus:/etc/prometheus\\\" prom/prometheus:v2.55.1 check rules /etc/prometheus/rules/alerts.yml', {stdio:'inherit'})\" && npm --prefix frontend run lint && npm --prefix frontend test && npm --prefix backend run build && npm --prefix frontend run build"
   },
   "keywords": [
     "appointment-booking",

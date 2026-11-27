@@ -12,7 +12,7 @@
     "test": "jest --runInBand --detectOpenHandles --forceExit"
   },
   "dependencies": {
-    "@asteasolutions/zod-to-openapi": "^7.3.4",
+    "@asteasolutions/zod-to-openapi": "^9.1.0",
     "@queueless/common": "*",
     "@queueless/contracts": "*",
     "@queueless/messaging": "*",
